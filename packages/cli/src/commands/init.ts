@@ -8,9 +8,7 @@ export async function runInit(projectRoot: string) {
   const detected = detectProject(projectRoot);
 
   console.log(`Detected application type: \x1b[36m${detected.type}\x1b[0m`);
-  console.log(`Default container port: \x1b[36m${detected.port}\x1b[0m`);
-  console.log(`Requires database: \x1b[36m${detected.hasDatabase ? 'Yes' : 'No'}\x1b[0m`);
-  console.log(`Requires Redis:    \x1b[36m${detected.hasRedis ? 'Yes' : 'No'}\x1b[0m\n`);
+  console.log(`Default container port: \x1b[36m${detected.port}\x1b[0m\n`);
 
   // Prompt the user for overrides using native readline
   const rl = readline.createInterface({
@@ -44,26 +42,20 @@ export async function runInit(projectRoot: string) {
     const tierInput = await rl.question('Choose tier [1]: ');
     const isProductionTier = tierInput.trim() !== '2';
 
-    let enableDatabase = detected.hasDatabase;
-    let enableRedis = detected.hasRedis;
+    const enableDbInput = await rl.question('Does your application require a database? (y/n) [n]: ');
+    const requiresDatabase = enableDbInput.trim().toLowerCase() === 'y';
+
+    let enableDatabase = false;
+    let enableRedis = false;
     let enableRdsProxy = false;
 
-    if (isProductionTier) {
-      const enableDbInput = await rl.question(`Enable RDS PostgreSQL database? (y/n) [${detected.hasDatabase ? 'y' : 'n'}]: `);
-      enableDatabase = enableDbInput.trim() ? enableDbInput.trim().toLowerCase() === 'y' : detected.hasDatabase;
-
-      const enableRedisInput = await rl.question(`Enable ElastiCache Redis? (y/n) [${detected.hasRedis ? 'y' : 'n'}]: `);
-      enableRedis = enableRedisInput.trim() ? enableRedisInput.trim().toLowerCase() === 'y' : detected.hasRedis;
-
-      if (enableDatabase) {
-        const enableProxyInput = await rl.question(`Enable RDS Proxy (PgBouncer connection pooler)? (y/n) [n]: `);
+    if (requiresDatabase) {
+      enableDatabase = true;
+      if (isProductionTier) {
+        enableRedis = true; // DB + Redis automatically enabled on Production Tier
+        const enableProxyInput = await rl.question('Enable RDS Proxy (PgBouncer connection pooler)? (y/n) [n]: ');
         enableRdsProxy = enableProxyInput.trim().toLowerCase() === 'y';
       }
-    } else {
-      // Hobby tier runs Postgres inside Docker Compose on the same instance (flat cost)
-      enableDatabase = true;
-      enableRedis = false;
-      enableRdsProxy = false;
     }
 
     const billingEmailInput = await rl.question(`Enter email for AWS budget alerts (press Enter to skip): `);
