@@ -1,0 +1,69 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Bootstrap IAM Role for GitHub Actions OIDC connection to AWS (MySystem).
+
+Parameters:
+  GitHubOrg:
+    Type: String
+    Description: Your GitHub Organization or Username (case-sensitive)
+  GitHubRepo:
+    Type: String
+    Description: Your GitHub Repository Name (case-sensitive)
+
+Resources:
+  # OIDC Provider for GitHub (Created only if it doesn't exist, we assume it's created or we create it here)
+  # Note: Since there can only be one OIDC provider per account, we handle it. If it fails, users can use an existing one.
+  GithubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1 # GitHub Actions Thumbprint
+
+  # IAM Role that GitHub Actions will assume to deploy the app
+  MySystemDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'MySystemDeployRole-${GitHubRepo}'
+      Description: IAM Role assumed by GitHub Actions to deploy infrastructure and code.
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GithubOidcProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOrg}/${GitHubRepo}:*'
+      # Attach Policies to allow Terraform to provision VPC, ECS, RDS, ALB, ECR etc.
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/PowerUserAccess
+      Policies:
+        - PolicyName: MySystemAdditionalIAMPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # PowerUserAccess does not allow managing IAM roles. Terraform needs to create ECS Task Execution Roles.
+              - Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:PassRole
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                Resource:
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/*-ecs-execution-role'
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/*-ecs-task-role'
+
+Outputs:
+  RoleARN:
+    Description: The ARN of the IAM Role for GitHub Actions. Copy this to your GitHub Repository Secret `AWS_ROLE_ARN`.
+    Value: !GetAtt MySystemDeployRole.Arn

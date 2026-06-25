@@ -1,0 +1,94 @@
+name: MySystem Deployment
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  id-token: write # Required for AWS OIDC authentication
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to AWS Fargate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # --- Step 1: Authenticate with AWS via OIDC ---
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1 # Will be customized by CLI on setup
+          audience: sts.amazonaws.com
+
+      # --- Step 2: Provision Infrastructure using Terraform ---
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+
+      - name: Terraform Init & Apply
+        working-directory: ./terraform
+        run: |
+          terraform init
+          terraform apply -auto-approve
+
+      # --- Step 3: Extract Terraform Outputs ---
+      - name: Get Outputs
+        id: tf_outputs
+        working-directory: ./terraform
+        run: |
+          echo "ECR_REPO=$(terraform output -raw ecr_repository_url)" >> $GITHUB_OUTPUT
+          echo "APP_URL=$(terraform output -raw application_url)" >> $GITHUB_OUTPUT
+
+      # --- Step 4: Login to Amazon ECR ---
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # --- Step 5: Build and Push Docker Image ---
+      - name: Build, Tag, and Push Image to ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ steps.tf_outputs.outputs.ECR_REPO }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Build a local Docker image
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          # Push it to ECR
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          # Save image URL as output
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      # --- Step 6: Deploy to ECS Fargate ---
+      # This pulls down the task definition template, updates it with the new image, and deploys it.
+      - name: Download Task Definition
+        run: |
+          aws ecs describe-task-definition --task-definition ${{ github.event.repository.name }} --query taskDefinition > task-definition.json
+
+      - name: Fill in the new image ID in the Amazon ECS task definition
+        id: render-task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ github.event.repository.name }}
+          image: ${{ steps.build-image.outputs.image }}
+
+      - name: Deploy Amazon ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-task-def.outputs.task-definition }}
+          service: ${{ github.event.repository.name }}
+          cluster: ${{ github.event.repository.name }}-cluster
+          wait-for-service-stability: true
+
+      - name: Show App URL
+        run: |
+          echo "🎉 App successfully deployed to: ${{ steps.tf_outputs.outputs.APP_URL }}"

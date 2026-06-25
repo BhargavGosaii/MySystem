@@ -1,0 +1,43 @@
+name: MySystem Teardown (Destroy)
+
+on:
+  workflow_dispatch: # Allows manual trigger from the GitHub Actions UI
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  destroy:
+    name: Teardown AWS Infrastructure
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # --- Step 1: Authenticate with AWS via OIDC ---
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1 # Will be customized by CLI on setup
+          audience: sts.amazonaws.com
+
+      # --- Step 2: Set up Terraform ---
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+
+      # --- Step 3: Run Terraform Destroy ---
+      - name: Terraform Init & Destroy
+        working-directory: ./terraform
+        run: |
+          terraform init
+          terraform destroy -auto-approve
+
+      - name: Success Message
+        run: |
+          echo "🔥 All AWS resources for this application have been successfully destroyed."
+          echo "Your AWS billing for this project has been stopped."

@@ -1,0 +1,163 @@
+name: MySystem EC2 Deployment
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to AWS EC2 (Hobbyist Tier)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # --- Step 1: Parse MySystem Config File ---
+      - name: Parse MySystem Config
+        id: config
+        run: |
+          echo "APP_NAME=$(jq -r .name mysystem.json)" >> $GITHUB_ENV
+          echo "AWS_REGION=$(jq -r .region mysystem.json)" >> $GITHUB_ENV
+          echo "CONTAINER_PORT=$(jq -r .port mysystem.json)" >> $GITHUB_ENV
+          echo "BILLING_EMAIL=$(jq -r .billingEmail mysystem.json)" >> $GITHUB_ENV
+          echo "ENABLE_CUSTOM_DOMAIN=$(jq -r .customDomain mysystem.json)" >> $GITHUB_ENV
+          echo "DOMAIN_NAME=$(jq -r .domainName mysystem.json)" >> $GITHUB_ENV
+          echo "DNS_PROVIDER=$(jq -r .dnsProvider mysystem.json)" >> $GITHUB_ENV
+
+      # --- Step 2: Authenticate with AWS via OIDC ---
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          audience: sts.amazonaws.com
+
+      # --- Step 3: Provision EC2 & ECR via Terraform ---
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+
+      - name: Terraform Init & Apply
+        working-directory: ./terraform
+        env:
+          TF_VAR_aws_region: ${{ env.AWS_REGION }}
+          TF_VAR_app_name: ${{ env.APP_NAME }}
+          TF_VAR_container_port: ${{ env.CONTAINER_PORT }}
+          TF_VAR_billing_email: ${{ env.BILLING_EMAIL }}
+          TF_VAR_enable_custom_domain: ${{ env.ENABLE_CUSTOM_DOMAIN }}
+          TF_VAR_domain_name: ${{ env.DOMAIN_NAME }}
+          TF_VAR_dns_provider: ${{ env.DNS_PROVIDER }}
+        run: |
+          terraform init
+          terraform apply -auto-approve
+
+      # --- Step 4: Extract Terraform Outputs ---
+      - name: Get Outputs
+        id: tf_outputs
+        working-directory: ./terraform
+        run: |
+          echo "ECR_REPO=$(terraform output -raw ecr_repository_url)" >> $GITHUB_OUTPUT
+          echo "INSTANCE_ID=$(terraform output -raw instance_id)" >> $GITHUB_OUTPUT
+          echo "APP_URL=$(terraform output -raw application_url)" >> $GITHUB_OUTPUT
+
+      # --- Step 5: Login to Amazon ECR ---
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # --- Step 6: Build and Push Docker Image ---
+      - name: Build, Tag, and Push Image to ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ steps.tf_outputs.outputs.ECR_REPO }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      # --- Step 7: Deploy to EC2 via AWS SSM ---
+      - name: Deploy to EC2 via AWS SSM
+        env:
+          INSTANCE_ID: ${{ steps.tf_outputs.outputs.INSTANCE_ID }}
+          IMAGE_URL: ${{ steps.build-image.outputs.image }}
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          AWS_DEFAULT_REGION: ${{ env.AWS_REGION }}
+          CONTAINER_PORT: ${{ env.CONTAINER_PORT }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: |
+          # Generate a secure password for Postgres
+          DB_PASSWORD=$(openssl rand -base64 12)
+
+          # Write the deployment script
+          cat <<EOF > deploy.sh
+          #!/bin/bash
+          # 1. Login to ECR
+          aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+
+          # 2. Create app directory
+          mkdir -p /home/ec2-user/app
+          
+          # 3. Create docker-compose.yml
+          cat <<'COMPOSE' > /home/ec2-user/app/docker-compose.yml
+          version: '3.8'
+          services:
+            web:
+              image: ${IMAGE_URL}
+              restart: always
+              ports:
+                - "80:${CONTAINER_PORT}"
+              environment:
+                - PORT=${CONTAINER_PORT}
+                - NODE_ENV=production
+                - DATABASE_URL=postgresql://mysystem_admin:${DB_PASSWORD}@db:5432/mysystem_db
+                - SENTRY_DSN=${SENTRY_DSN}
+              depends_on:
+                - db
+
+            db:
+              image: postgres:15-alpine
+              restart: always
+              environment:
+                - POSTGRES_USER=mysystem_admin
+                - POSTGRES_PASSWORD=${DB_PASSWORD}
+                - POSTGRES_DB=mysystem_db
+              volumes:
+                - pgdata:/var/lib/postgresql/data
+
+          volumes:
+            pgdata:
+          COMPOSE
+
+          # 4. Pull and run containers
+          cd /home/ec2-user/app
+          docker compose pull
+          docker compose up -d
+          EOF
+
+          # Base64 encode the script to avoid all command-line escaping issues
+          B64_SCRIPT=\$(base64 -w 0 deploy.sh)
+
+          # Send run command to AWS SSM
+          CMD_ID=\$(aws ssm send-command \
+            --instance-ids "${INSTANCE_ID}" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "commands=[\"echo '\$B64_SCRIPT' | base64 -d > /tmp/deploy.sh\", \"chmod +x /tmp/deploy.sh\", \"/tmp/deploy.sh\"]" \
+            --query "Command.CommandId" \
+            --region "${AWS_DEFAULT_REGION}" \
+            --output text)
+
+          echo "Deployment initiated via SSM. Command ID: \$CMD_ID"
+
+      - name: Show App URL
+        run: |
+          echo "🎉 App successfully deployed to: ${{ steps.tf_outputs.outputs.APP_URL }}"

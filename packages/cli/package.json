@@ -1,0 +1,33 @@
+{
+  "name": "mysystem",
+  "version": "1.0.0",
+  "description": "Zero-config deployment standard and CLI for AI-generated applications on AWS Fargate",
+  "main": "dist/index.js",
+  "bin": {
+    "mysystem": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "aws",
+    "fargate",
+    "ecs",
+    "deploy",
+    "terraform",
+    "docker",
+    "cursor",
+    "ai",
+    "agents"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
