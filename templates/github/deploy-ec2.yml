@@ -30,6 +30,7 @@ jobs:
           echo "ENABLE_CUSTOM_DOMAIN=$(jq -r .customDomain mysystem.json)" >> $GITHUB_ENV
           echo "DOMAIN_NAME=$(jq -r .domainName mysystem.json)" >> $GITHUB_ENV
           echo "DNS_PROVIDER=$(jq -r .dnsProvider mysystem.json)" >> $GITHUB_ENV
+          echo "ENABLE_DATABASE=$(jq -r .database mysystem.json)" >> $GITHUB_ENV
 
       # --- Step 2: Authenticate with AWS via OIDC ---
       - name: Configure AWS Credentials
@@ -87,6 +88,8 @@ jobs:
 
       # --- Step 7: Deploy to EC2 via AWS SSM ---
       - name: Deploy to EC2 via AWS SSM
+        uses: aws-actions/aws-ssm-send-command@v2
+        id: ssm
         env:
           INSTANCE_ID: ${{ steps.tf_outputs.outputs.INSTANCE_ID }}
           IMAGE_URL: ${{ steps.build-image.outputs.image }}
@@ -94,6 +97,7 @@ jobs:
           AWS_DEFAULT_REGION: ${{ env.AWS_REGION }}
           CONTAINER_PORT: ${{ env.CONTAINER_PORT }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          ENABLE_DATABASE: ${{ env.ENABLE_DATABASE }}
         run: |
           # Generate a secure password for Postgres
           DB_PASSWORD=$(openssl rand -base64 12)
@@ -108,6 +112,10 @@ jobs:
           mkdir -p /home/ec2-user/app
           
           # 3. Create docker-compose.yml
+EOF
+
+          if [ "${ENABLE_DATABASE}" = "true" ]; then
+            cat <<EOF >> deploy.sh
           cat <<'COMPOSE' > /home/ec2-user/app/docker-compose.yml
           version: '3.8'
           services:
@@ -137,6 +145,26 @@ jobs:
           volumes:
             pgdata:
           COMPOSE
+EOF
+          else
+            cat <<EOF >> deploy.sh
+          cat <<'COMPOSE' > /home/ec2-user/app/docker-compose.yml
+          version: '3.8'
+          services:
+            web:
+              image: ${IMAGE_URL}
+              restart: always
+              ports:
+                - "80:${CONTAINER_PORT}"
+              environment:
+                - PORT=${CONTAINER_PORT}
+                - NODE_ENV=production
+                - SENTRY_DSN=${SENTRY_DSN}
+          COMPOSE
+EOF
+          fi
+
+          cat <<EOF >> deploy.sh
 
           # 4. Pull and run containers
           cd /home/ec2-user/app
