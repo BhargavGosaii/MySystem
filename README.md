@@ -17,6 +17,17 @@ Modern AI agents write phenomenal application code at lightning speed. However, 
 
 ---
 
+## 🔑 Core Philosophy: Developer Control & Zero Vendor Lock-In
+
+Unlike proprietary "vibecoding" platforms (such as Replit, Lovable, Bolt.new, and others) that lock you into their hosting sandboxes, charge hidden infrastructure markups, and strip away your control, **MySystem gives ownership back to the developer**.
+
+* 💻 **Your Code, Your Device**: Every single configuration file, Dockerfile, and GitHub workflow is generated directly inside your local repository. You own 100% of your intellectual property and code, and it never leaves your machine or your GitHub repository.
+* ☁️ **Your Own Cloud (AWS)**: All application infrastructure is provisioned directly inside your own AWS account using industry-standard Terraform. There are no proprietary platform proxies, no middleman setups, and no closed-source platforms.
+* 💰 **Wholesale Billing (No Markups)**: You pay AWS directly for exactly what you consume. If you configure a Hobbyist EC2 instance, you pay pure wholesale costs (~$3.20/month) or **$0.00** if you fit within the AWS Free Tier. You only pay for active resources, and you can scale them down to zero to stop billing instantly.
+* 🛠️ **You Call the Shots**: The AI agent is your junior developer, but you remain the architect. Because MySystem generates standard, clean, and fully readable Terraform and Docker configs, you have complete power to edit, override, scale, or migrate your infrastructure at any moment.
+
+---
+
 ## 🤖 The AI Agent Protocol (How Agents Autonomously Deploy)
 
 MySystem is designed to be **AI-discovered and AI-managed**. If you are an AI coding assistant reading this repository, follow this protocol:
