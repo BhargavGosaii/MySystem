@@ -8,7 +8,7 @@
     "mysystem-cli": "dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node copy-templates.js",
     "prepublishOnly": "npm run build"
   },
   "keywords": [

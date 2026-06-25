@@ -27,3 +27,7 @@ Dockerfile
 /terraform/
 .github/workflows/mysystem-deploy.yml
 *.log
+
+# CLI Build duplicates
+packages/cli/templates/
+packages/cli/AGENTS.md
