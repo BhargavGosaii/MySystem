@@ -35,7 +35,7 @@ MySystem is designed to be **AI-discovered and AI-managed**. If you are an AI co
 ### 1. Auto-Discovery
 If the user asks to "deploy this app," "host this app," "configure AWS," or "create CI/CD," check for the presence of the MySystem standard:
 * Look for `mysystem.json` or `AGENTS.md` in the project root.
-* If missing, run `npx mysystem init` to bootstrap the standard.
+* If missing, run `npx mysystem-cli init` to bootstrap the standard.
 
 ### 2. Implementation & Compliance
 When building code or modifying the repository, you **must** adhere to the guidelines defined in [AGENTS.md](file:///AGENTS.md):
@@ -47,7 +47,7 @@ When building code or modifying the repository, you **must** adhere to the guide
 * **EC2 Sizing**: Autonomously size the virtual machine in `terraform/terraform.tfvars` (`t4g.nano` for static frontends, `t3.micro` for standard apps, `t3.small` for memory-intensive apps) to prevent Out-Of-Memory (OOM) crashes.
 
 ### 3. Verification & Deployment
-Before pushing code, run `npx mysystem audit` to execute a local security and readiness scan. If it reports errors, fix them first. Once audit passes:
+Before pushing code, run `npx mysystem-cli audit` to execute a local security and readiness scan. If it reports errors, fix them first. Once audit passes:
 1. Commit the configuration changes.
 2. Push them to GitHub: `git push origin main`.
 3. The integrated GitHub Actions CI/CD pipeline will automatically build the Docker image, push it to ECR, and deploy it to AWS.
@@ -74,16 +74,16 @@ MySystem features a light, zero-dependency CLI package that AI agents or human d
 
 ```bash
 # Initialize MySystem in the current repository
-npx mysystem init
+npx mysystem-cli init
 
 # Audit code files, Dockerfile, and IaC for security & readiness
-npx mysystem audit
+npx mysystem-cli audit
 
 # Stream logs from AWS CloudWatch directly to your local terminal
-npx mysystem logs
+npx mysystem-cli logs
 
 # Securely dismantle all AWS infrastructure resources to stop billing
-npx mysystem destroy
+npx mysystem-cli destroy
 ```
 
 ---
@@ -110,7 +110,7 @@ All cloud infrastructure is deployed **directly into your own AWS account** via 
 
 MySystem strictly forbids storing long-lived, hardcoded AWS Access Keys (`AWS_ACCESS_KEY_ID`) in GitHub Secrets. Instead, it utilizes **AWS OIDC (OpenID Connect)**.
 
-1. During `npx mysystem init`, a secure 1-click AWS CloudFormation template is generated.
+1. During `npx mysystem-cli init`, a secure 1-click AWS CloudFormation template is generated.
 2. Clicking the link provisions a secure IAM Role in your AWS account that trusts only your specific GitHub repository.
 3. GitHub Actions authenticates dynamically using temporary, short-lived tokens, making your deployment completely immune to credential theft.
 
@@ -124,7 +124,7 @@ Ready to deploy your app? Just follow these three simple steps:
 Tell your AI Agent (Cursor, Claude Code, etc.) in the chat:
 > *"Use MySystem to initialize a Hobbyist deployment for this project."*
 
-*(Your AI agent will run `npx mysystem init`, detect your framework, prompt you for basic inputs like email/region, and place all templates).*
+*(Your AI agent will run `npx mysystem-cli init`, detect your framework, prompt you for basic inputs like email/region, and place all templates).*
 
 ### Step 2: Establish the AWS Trust Link
 Your agent will output a **1-click AWS CloudFormation** trust URL:

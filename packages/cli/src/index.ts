@@ -13,7 +13,7 @@ function printHelp() {
 \x1b[1mMySystem CLI - Production Deployment for Vibecoders\x1b[0m
 
 Usage:
-  npx mysystem <command> [options]
+  npx mysystem-cli <command> [options]
 
 Commands:
   \x1b[36minit\x1b[0m      Initialize AWS Terraform configs, Dockerfiles, and GitHub workflows.
@@ -23,10 +23,10 @@ Commands:
   \x1b[36mhelp\x1b[0m      Print this help menu.
 
 Examples:
-  $ npx mysystem init
-  $ npx mysystem audit
-  $ npx mysystem logs
-  $ npx mysystem destroy
+  $ npx mysystem-cli init
+  $ npx mysystem-cli audit
+  $ npx mysystem-cli logs
+  $ npx mysystem-cli destroy
   `);
 }
 
