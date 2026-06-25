@@ -1,6 +1,6 @@
 {
   "name": "mysystem-cli",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Zero-config deployment standard and CLI for AI-generated applications on AWS Fargate",
   "main": "dist/index.js",
   "bin": {

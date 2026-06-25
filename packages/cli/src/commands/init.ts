@@ -22,8 +22,21 @@ export async function runInit(projectRoot: string) {
     const appNameInput = await rl.question(`Enter application name [${detected.name}]: `);
     const appName = appNameInput.trim() || detected.name;
 
-    const awsRegionInput = await rl.question(`Enter AWS region [us-east-1]: `);
-    const awsRegion = awsRegionInput.trim() || 'us-east-1';
+    let awsRegion = 'us-east-1';
+    const regionRegex = /^[a-z]{2,}-[a-z]+-[0-9]+$/;
+    while (true) {
+      const awsRegionInput = await rl.question(`Enter AWS region [us-east-1]: `);
+      const val = awsRegionInput.trim();
+      if (!val) {
+        awsRegion = 'us-east-1';
+        break;
+      }
+      if (regionRegex.test(val)) {
+        awsRegion = val;
+        break;
+      }
+      console.log('\x1b[31mInvalid AWS region format. Example: us-east-1, eu-west-1, ap-south-1. Please try again.\x1b[0m');
+    }
 
     console.log('Select your AWS hosting tier:');
     console.log('  \x1b[36m1. Production\x1b[0m [ECS Fargate + RDS + ALB + WAF] (~$17/mo free-tier, ~$51/mo standard)');
