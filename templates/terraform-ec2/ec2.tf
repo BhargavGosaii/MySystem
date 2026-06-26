@@ -86,12 +86,19 @@ resource "aws_instance" "app" {
   vpc_security_group_ids = [aws_security_group.ec2.id]
   iam_instance_profile = aws_iam_instance_profile.ec2.name
 
-  # Startup script: installs Docker & Docker Compose
+  # Startup script: installs Docker & Docker Compose and configures safety rules
   user_data = <<-EOF
               #!/bin/bash
               # Update system packages
               yum update -y
               
+              # Configure 2GB Swap space to prevent Out-Of-Memory (OOM) crashes on small instances
+              fallocate -l 2G /swapfile
+              chmod 600 /swapfile
+              mkswap /swapfile
+              swapon /swapfile
+              echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+
               # Install Docker
               amazon-linux-extras install docker -y
               systemctl start docker

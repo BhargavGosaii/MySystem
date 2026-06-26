@@ -11,6 +11,7 @@ import { monitoringService } from '../services/monitor';
 import { WorkflowContext, createInitialContext } from './state';
 import { PlannerConstraints } from '../planner/planner';
 import { readManifest, writeManifest } from './manifest';
+import { connectAwsAndGithubOidc } from '../utils/installer';
 
 export class WorkflowEngine {
   private context: WorkflowContext;
@@ -184,8 +185,11 @@ export class WorkflowEngine {
 
       // 8. Deploy
       this.context.currentState = 'DEPLOYING';
-      console.log('\n\x1b[1m🚀 [8/10] Simulating OIDC Stack Trust Validation and deployment checks...\x1b[0m');
-      console.log('   ✅ OIDC Stack verification URLs compiled.');
+      console.log('\n\x1b[1m🚀 [8/10] Connecting AWS and GitHub via OIDC Stack Trust...\x1b[0m');
+      const oidcSuccess = await connectAwsAndGithubOidc(this.context.projectRoot);
+      if (!oidcSuccess) {
+        throw new Error('Failed to set up AWS/GitHub OIDC trust connection stack.');
+      }
 
       // 9. Verify Deployment
       this.context.currentState = 'VERIFYING';

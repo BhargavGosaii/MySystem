@@ -131,6 +131,11 @@ EOF
                 - SENTRY_DSN=${SENTRY_DSN}
               depends_on:
                 - db
+              logging:
+                driver: "json-file"
+                options:
+                  max-size: "10m"
+                  max-file: "3"
 
             db:
               image: postgres:15-alpine
@@ -141,6 +146,11 @@ EOF
                 - POSTGRES_DB=mysystem_db
               volumes:
                 - pgdata:/var/lib/postgresql/data
+              logging:
+                driver: "json-file"
+                options:
+                  max-size: "10m"
+                  max-file: "3"
 
           volumes:
             pgdata:
@@ -160,6 +170,11 @@ EOF
                 - PORT=${CONTAINER_PORT}
                 - NODE_ENV=production
                 - SENTRY_DSN=${SENTRY_DSN}
+              logging:
+                driver: "json-file"
+                options:
+                  max-size: "10m"
+                  max-file: "3"
           COMPOSE
 EOF
           fi
