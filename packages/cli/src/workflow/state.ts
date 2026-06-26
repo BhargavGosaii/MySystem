@@ -12,6 +12,7 @@ export type WorkflowState =
   | 'PREPARING_ASSETS' 
   | 'DEPLOYING' 
   | 'VERIFYING' 
+  | 'ROLLING_BACK'
   | 'COMPLETED' 
   | 'FAILED';
 

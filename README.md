@@ -1,19 +1,17 @@
-# MySystem — The Open Standard for AI-Native Deployments
+# MySystem - AI Production Engineer
 
-**MySystem** is the open-source repository standard and developer toolkit that teaches AI coding agents (such as Cursor, Claude Code, Lovable, Bolt.new, Windsurf, and v0) how to build, audit, and deploy production-grade software directly to your own AWS cloud account.
+**MySystem** is an AI Production Engineer that reviews, fixes, and deploys applications directly into your own AWS account. It enables vibe coders and developers who can build applications to establish a senior-grade production architecture, automatically resolve issues, and deploy reliably without needing to learn AWS, Terraform, Docker, or IAM.
 
 ---
 
-## 💡 The Core Problem
+## 🚀 The User Journey
 
-Modern AI agents write phenomenal application code at lightning speed. However, they lack the operational context of a senior DevOps engineer. When asked to "deploy this app," AI agents frequently make critical mistakes:
-- Hardcoding credentials or database passwords.
-- Generating bloated or insecure Dockerfiles running as `root`.
-- Forgetting healthcheck endpoints required by load balancers.
-- Provisioning over-sized, expensive cloud resources without warning the user.
-- Storing files locally on ephemeral cloud drives instead of object storage.
+MySystem operates in four autonomous phases:
 
-**MySystem solves this.** By initializing MySystem in your repository, you establish a standard framework of files, configurations, and instruction guardrails that any AI coding agent can discover, read, and execute autonomously.
+1. **Review**: Runs a deep review of the codebase to identify security, database, performance, and cost concerns.
+2. **Fix**: Automatically resolves all safe infrastructure findings (e.g. generating optimized Dockerfiles, GitHub Actions workflows, health check endpoints, budget alerts, and Terraform variables).
+3. **Deploy**: Compiles cost-optimized AWS infrastructure configurations and deploys passwordless using GitHub Actions OIDC integration directly into your own AWS account.
+4. **Monitor**: Compiles a post-deployment summary and provides clear, future scaling suggestions (e.g. when to scale from EC2 to ECS, when to introduce Redis, CloudFront, or PgBouncer).
 
 ---
 

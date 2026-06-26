@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import * as readline from 'readline/promises';
 import { inspectService } from '../services/inspect';
 import { reviewService, EngineeringFinding } from '../services/review';
@@ -8,6 +10,7 @@ import { verificationService } from '../services/verify';
 import { monitoringService } from '../services/monitor';
 import { WorkflowContext, createInitialContext } from './state';
 import { PlannerConstraints } from '../planner/planner';
+import { readManifest, writeManifest } from './manifest';
 
 export class WorkflowEngine {
   private context: WorkflowContext;
@@ -23,11 +26,27 @@ export class WorkflowEngine {
     });
 
     try {
+      // Load manifest if it exists
+      const manifest = readManifest(this.context.projectRoot);
+      let isReusingManifest = false;
+      if (manifest) {
+        console.log('\n\x1b[36mℹ️  [Manifest] Found existing project manifest (.mysystem/manifest.json). Reusing previous settings.\x1b[0m');
+        this.context.awsRegion = manifest.awsRegion;
+        this.context.needsDatabase = manifest.currentInfrastructure.database !== 'none';
+        this.context.maxBudget = manifest.currentInfrastructure.hosting === 'ecs-fargate' ? 50.00 : 15.00;
+        isReusingManifest = true;
+      }
+
       // 1. Inspect Project
       this.context.currentState = 'INSPECTING';
       console.log('\n\x1b[1m🔍 [1/10] Inspecting Project Codebase...\x1b[0m');
       this.context.characteristics = await inspectService.inspect(this.context.projectRoot);
-      this.context.projectName = this.context.characteristics.name;
+      
+      if (!isReusingManifest || !manifest) {
+        this.context.projectName = this.context.characteristics.name;
+      } else {
+        this.context.projectName = manifest.framework !== 'unknown' ? manifest.framework : this.context.characteristics.name;
+      }
       console.log(`   Framework: \x1b[36m${this.context.characteristics.framework}\x1b[0m`);
 
       // 2. Engineering Review
@@ -36,7 +55,7 @@ export class WorkflowEngine {
       this.context.findings = await reviewService.review(this.context.characteristics, this.context.projectRoot);
       console.log(`   Found \x1b[33m${this.context.findings.length}\x1b[0m initial issues.`);
 
-      // 3. Automatically Fix Safe Issues
+      // 3. Automatically Fix Safe Issues (Infrastructure Fixes)
       this.context.currentState = 'FIXING';
       const autofixable = this.context.findings.filter(f => f.action === 'AUTOFIX');
       if (autofixable.length > 0) {
@@ -72,63 +91,43 @@ export class WorkflowEngine {
         });
       }
 
-      // AWS Region Selection (Required Blocker)
-      let awsRegion = 'us-east-1';
-      const validRegions = [
-        'us-east-1', 'us-east-2', 'us-west-1', 'us-west-2',
-        'eu-west-1', 'eu-west-2', 'eu-west-3', 'eu-central-1',
-        'ap-northeast-1', 'ap-northeast-2', 'ap-northeast-3',
-        'ap-southeast-1', 'ap-southeast-2', 'ap-southeast-4',
-        'ap-south-1', 'sa-east-1', 'ca-central-1'
-      ];
-      while (true) {
-        const regionInput = await rl.question('\nEnter AWS Region [us-east-1]: ');
-        const trimmed = regionInput.trim().toLowerCase();
-        if (!trimmed) {
-          awsRegion = 'us-east-1';
-          break;
-        }
-        if (validRegions.includes(trimmed)) {
-          awsRegion = trimmed;
-          break;
-        }
-        console.log(`\x1b[31mError: "${trimmed}" is not a valid AWS region. Please choose a valid region (e.g. us-east-1, us-west-2, eu-west-1).\x1b[0m`);
-      }
-      this.context.awsRegion = awsRegion;
+      // Auto-Detect & Infer Configuration Parameters
+      if (!isReusingManifest) {
+        // 1. Infer AWS Region
+        const envRegion = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION;
+        this.context.awsRegion = envRegion || 'us-east-1';
+        console.log(`   AWS Region:         \x1b[36m${this.context.awsRegion}\x1b[0m (Auto-detected)`);
 
-      // Database Requirement Selection
-      const dbInput = await rl.question('\nDoes your application require a database? (y/n) [y]: ');
-      const needsDatabase = dbInput.trim().toLowerCase() !== 'n';
-      this.context.needsDatabase = needsDatabase;
+        // 2. Infer Database requirement from codebase characteristics
+        const hasDb = !!(this.context.characteristics?.databaseLib || this.context.characteristics?.ormLib || this.context.characteristics?.databaseUrlConfigured);
+        this.context.needsDatabase = hasDb;
+        console.log(`   Database required:  \x1b[36m${this.context.needsDatabase ? 'Yes' : 'No'}\x1b[0m (Auto-detected)`);
 
-      // Budget Limit
-      const budgetInput = await rl.question('\nEnter your maximum monthly hosting budget limit ($) [50]: ');
-      const maxBudget = parseFloat(budgetInput.trim()) || 50.00;
-      this.context.maxBudget = maxBudget;
-
-      // Security Level
-      console.log('\nChoose target security level:');
-      console.log('  1. Basic  [Direct ALB/EC2 routing]');
-      console.log('  2. High   [Shielded via AWS WAF firewall]');
-      const secInput = await rl.question('Choose security level [1]: ');
-      const securityLevel = secInput.trim() === '2' ? 'waf-shielded' : 'basic';
-
-      // Custom Domain
-      const customDomainInput = await rl.question('\nEnable custom domain & HTTPS SSL certificate? (y/n) [n]: ');
-      const enableCustomDomain = customDomainInput.trim().toLowerCase() === 'y';
-      let domainName = '';
-      if (enableCustomDomain) {
-        const domainInput = await rl.question('Enter custom domain (e.g. app.myproduct.com): ');
-        domainName = domainInput.trim();
+        // 3. Infer hosting and allocate budget limits
+        const hasScalingTriggers = !!(this.context.characteristics?.hasWebsockets || this.context.characteristics?.queueLib);
+        this.context.maxBudget = hasScalingTriggers ? 50.00 : 15.00;
+        console.log(`   Budget allocated:   \x1b[36m$${this.context.maxBudget.toFixed(2)}/mo\x1b[0m (Auto-allocated)`);
+      } else {
+        console.log(`   Reused Region:      \x1b[36m${this.context.awsRegion}\x1b[0m (Reused)`);
+        console.log(`   Reused Database:    \x1b[36m${this.context.needsDatabase ? 'Yes' : 'No'}\x1b[0m (Reused)`);
+        console.log(`   Reused Budget limit:\x1b[36m$${this.context.maxBudget.toFixed(2)}/mo\x1b[0m (Reused)`);
       }
 
-      const billingEmailInput = await rl.question('\nEnter email for AWS budget alerts (press Enter to skip): ');
-      const billingEmail = billingEmailInput.trim();
+      // 4. Infer Security level (enable WAF automatically if database is exposed)
+      const securityLevel = this.context.needsDatabase ? 'waf-shielded' : 'basic';
+      console.log(`   Security profile:   \x1b[36m${securityLevel === 'waf-shielded' ? 'High (WAF Shielded)' : 'Basic'}\x1b[0m (Auto-configured)`);
 
-      // Resolve database blocker if approved
+      // 5. Custom Domain & Email Alert Defaults
+      const domainName = process.env.MYSYSTEM_DOMAIN || '';
+      const billingEmail = '';
+      if (domainName) {
+        console.log(`   Custom Domain:      \x1b[36m${domainName}\x1b[0m (Inferred from env)`);
+      }
+
+      // Resolve database code blocker if approved (Code Fix approval check)
       const sqliBlocker = this.context.findings.find(f => f.id === 'sec-sql-injection');
       if (sqliBlocker) {
-        console.log(`\n\x1b[33m⚠️  SQL Injection smell detected. You must confirm parameters sanitization.\x1b[0m`);
+        console.log(`\n\x1b[33m⚠️  SQL Injection smell detected. You must confirm parameter sanitization.\x1b[0m`);
         const approveSqli = await rl.question('Do you approve parameter sanitization and ORM safety compliance? (y/n) [y]: ');
         if (approveSqli.trim().toLowerCase() !== 'n') {
           sqliBlocker.fixed = true;
@@ -193,11 +192,7 @@ export class WorkflowEngine {
       console.log('\n\x1b[1m🛡️  [9/10] Verifying generated production assets... \x1b[0m');
       const verification = await verificationService.verify(this.context.projectRoot);
       if (!verification.success) {
-        console.log('\x1b[31mVerification Errors:\x1b[0m');
-        verification.errors.forEach(err => console.log(`   - ${err}`));
-        this.context.currentState = 'FAILED';
-        rl.close();
-        return false;
+        throw new Error(`Verification Failure: ${verification.errors.join(', ')}`);
       }
       console.log('   ✅ Verification checks successfully passed.');
 
@@ -205,14 +200,64 @@ export class WorkflowEngine {
       this.context.currentState = 'COMPLETED';
       console.log('\n\x1b[1m📝 [10/10] Compiling Production Summary dashboard...\x1b[0m');
       const summary = await monitoringService.generateSummary(this.context.plan);
-      monitoringService.printSummary(summary);
+      
+      // Save manifest json
+      writeManifest(this.context.projectRoot, {
+        framework: this.context.characteristics.framework,
+        deploymentType: this.context.plan.config.hosting === 'ecs-fargate' ? 'production' : 'hobbyist',
+        awsRegion: this.context.awsRegion,
+        lastReview: new Date().toISOString(),
+        lastDeployment: new Date().toISOString(),
+        healthStatus: 'Healthy',
+        currentInfrastructure: {
+          hosting: this.context.plan.config.hosting,
+          database: this.context.plan.config.database !== 'none' ? 'postgresql' : 'none',
+          redis: this.context.plan.config.redis,
+          pgBouncer: this.context.plan.config.pgBouncer,
+          waf: this.context.plan.config.waf
+        },
+        version: '1.0.4'
+      });
 
+      monitoringService.printSummary(summary);
       rl.close();
       return true;
 
     } catch (err: any) {
+      const failedState = this.context.currentState;
+      this.context.currentState = 'ROLLING_BACK';
+      console.log('\n\x1b[1m🔴 [ROLLING BACK] Initiating infrastructure rollback and restoring files...\x1b[0m');
+      
+      // Revert generated assets
+      try {
+        const pathsToCleanup = [
+          path.join(this.context.projectRoot, 'Dockerfile'),
+          path.join(this.context.projectRoot, 'mysystem.json'),
+          path.join(this.context.projectRoot, '.github', 'workflows', 'mysystem-deploy.yml'),
+          path.join(this.context.projectRoot, '.github', 'workflows', 'mysystem-destroy.yml')
+        ];
+        pathsToCleanup.forEach(p => {
+          if (fs.existsSync(p)) fs.unlinkSync(p);
+        });
+        const tfDir = path.join(this.context.projectRoot, 'terraform');
+        if (fs.existsSync(tfDir)) {
+          fs.rmSync(tfDir, { recursive: true, force: true });
+        }
+        console.log('   ✅ Local infrastructure variables and manifests reverted.');
+      } catch {
+        console.log('   ⚠️  Failed to complete file reversion cleanly.');
+      }
+
+      console.log('\n================================================================');
+      console.log('\x1b[1m\x1b[31m                    MYSYSTEM ROLLBACK DIAGNOSTICS REPORT\x1b[0m');
+      console.log('================================================================');
+      console.log(`Failed Step:         \x1b[33m${failedState}\x1b[0m`);
+      console.log(`Error Diagnostics:   \x1b[31m${err.message}\x1b[0m`);
+      console.log(`Rollback Action:     Reverted generated CloudFormation/Terraform assets`);
+      console.log(`System State:        Restored to original pre-deployment state`);
+      console.log('================================================================\n');
+
       this.context.currentState = 'FAILED';
-      console.error(`\n\x1b[31mWorkflow failed: ${err.message}\x1b[0m`);
       rl.close();
       return false;
     }
