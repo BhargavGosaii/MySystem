@@ -452,18 +452,40 @@ export async function runAdvisor(
   });
 
   // SAFE decisions — always applied, no discussion needed
-  const envRegion = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1';
+  let detectedRegion = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || '';
+  let regionSource = 'env-config';
+  let regionReasoning = ['Read from AWS_REGION/AWS_DEFAULT_REGION environment variable.'];
+
+  if (!detectedRegion) {
+    try {
+      const { execSync } = require('child_process');
+      const awsRegion = execSync('aws configure get region', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      if (awsRegion) {
+        detectedRegion = awsRegion;
+        regionSource = 'aws-cli-config';
+        regionReasoning = [`Auto-detected default region '${detectedRegion}' from configured AWS CLI profile.`];
+      }
+    } catch {
+      // Ignore error and fall back
+    }
+  }
+
+  if (!detectedRegion) {
+    detectedRegion = 'us-east-1';
+    regionSource = 'default-fallback';
+    regionReasoning = ["Defaulting to 'us-east-1' (no active profile or environment region override detected)."];
+  }
+
   decisions.push({
     component: 'region',
-    value: envRegion,
+    value: detectedRegion,
     confidence: 95,
-    reasoning: process.env.AWS_REGION
-      ? ['Read from AWS_REGION environment variable.']
-      : ['Defaulting to us-east-1 (lowest latency for most users).'],
-    source: 'env-config',
+    reasoning: regionReasoning,
+    source: regionSource,
     decisionType: 'SAFE',
     monthlyCost: 0,
   });
+
 
   decisions.push({
     component: 'cloudwatch',
