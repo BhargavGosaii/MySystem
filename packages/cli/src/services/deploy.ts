@@ -79,6 +79,9 @@ sentry_dsn           = "${plan.config.sentryDsn || ''}"
 
       // 4. Write project configuration mysystem.json
       const configData = {
+        provider: "aws",
+        managed: true,
+        workflow: "v1",
         name: plan.projectName,
         region: plan.awsRegion,
         port: characteristics.port,

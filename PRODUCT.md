@@ -1,19 +1,23 @@
-# MySystem Vision & Product Specification (PRODUCT.md)
+# MySystem Product Specification (PRODUCT.md)
 
-This specification defines the core direction and non-goals of MySystem. Every agent, assistant, or developer working on this repository must align their contributions with these principles.
+This document defines the core product vision, target audience, promises, and non-goals for MySystem. It aligns contributors and AI agents on implementation boundaries.
 
 ---
 
-## 👥 Who the User Is
-- **Target Audience**: Developers who can build applications (monoliths, SPAs, APIs) but do not know DevOps.
-- **The "Vibe Coder" Profile**: They want a production-ready setup but do not want to learn AWS networking, Terraform resource declarations, Docker optimization, IAM profiles, or SSL certificate mapping. The AI handles these responsibilities.
+## 👥 Target Audience
+* **Vibe Coders & Developers**: Individuals who can build applications (monoliths, APIs, Single Page Apps) but do not want to learn AWS configuration, Terraform syntax, Docker performance tuning, network subnets, IAM policies, or SSL routing.
+* **Outcome-Obsessed**: Users who view hosting and deployment as "plumbing" and want their applications to be secure, cost-optimized, and deployed into their own AWS accounts with zero manual effort.
 
-## 🤝 The Promise
-- **Autonomous Workflow**: The AI manages the entire lifecycle in one contiguous conversation: **Review → Fix (safe production issues) → Deploy (into user's own AWS account) → Monitor (with future scaling suggestions)**.
-- **Zero Local DevOps Tooling**: The user's local machine does not need Docker, AWS CLI, or Terraform installed. Local configuration is generated, but compile and deployment execution occurs passwordless on GitHub Actions via secure AWS OIDC stack integrations.
-- **Explainable Autofixes**: If a blocker or risk is found, safe options are applied automatically and explained, rather than throwing errors.
+---
 
-## 🚫 Non-Goals
-- **Not a Multi-Cloud Platform**: Support is strictly opinionated and restricted to **AWS only**. Do not implement GCP, Azure, Hetzner, DigitalOcean, or Kubernetes.
-- **Not a Generic DevOps Framework**: Do not write complex, customizable pipelines. Choose sensible, cost-optimized AWS defaults.
-- **Not an Infrastructure Toolkit**: The CLI is a debugging/fallback interface. The core product is the autonomous reasoning engine.
+## 🤝 The Product Promise
+* **Autonomous Operations**: The engine executes the complete lifecycle inside a single conversation: **Review → AutoFix safe issues → Ask for minimal approvals → Provision AWS infrastructure → Verify deployment → Stream log telemetry**.
+* **Clean & Transparent**: No hidden markups or proprietary hosting lock-in. Everything is deployed directly to the user's personal AWS account using wholesale-pricing architecture defaults.
+* **AI-First Integration**: Designed from the ground up to be discovered, run, and maintained by IDE-based AI coding agents.
+
+---
+
+## 🚫 Non-Goals (Scope Freeze)
+* **No Multi-Cloud Support**: Support is strictly restricted to AWS. Do not introduce configurations for GCP, Azure, DigitalOcean, Hetzner, or generic providers.
+* **No Kubernetes**: Maintain lightweight, cost-effective EC2 monolith and ECS Fargate deployments. Do not introduce EKS or complex container orchestrators.
+* **No Complex Customization**: Do not implement extensive, customizable pipelines. Choose sensible, flat-fee AWS defaults (such as direct ALB routing without NAT Gateways for ECS) to keep costs minimal.

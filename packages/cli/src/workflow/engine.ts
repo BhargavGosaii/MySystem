@@ -293,11 +293,15 @@ export class WorkflowEngine {
 
       // Save manifest json
       writeManifest(this.context.projectRoot, {
+        version: 1,
         framework: this.context.characteristics.framework,
-        deploymentType: isProd ? 'production' : 'hobbyist',
-        awsRegion: this.context.awsRegion,
+        provider: "aws",
+        deployment: isProd ? 'ecs-fargate' : 'ec2',
         lastReview: new Date().toISOString(),
         lastDeployment: new Date().toISOString(),
+        workflowVersion: 1,
+        deploymentType: isProd ? 'production' : 'hobbyist',
+        awsRegion: this.context.awsRegion,
         healthStatus: 'Healthy',
         currentInfrastructure: {
           hosting: this.context.plan.config.hosting,
@@ -306,7 +310,7 @@ export class WorkflowEngine {
           pgBouncer: this.context.plan.config.pgBouncer,
           waf: this.context.plan.config.waf
         },
-        version: '1.0.4'
+        manifestVersion: '1.0.4'
       });
 
       // Save deployment history

@@ -2,11 +2,15 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 export interface ProjectManifest {
+  version: number;
   framework: string;
-  deploymentType: 'production' | 'hobbyist';
-  awsRegion: string;
+  provider: string;
+  deployment: 'ec2' | 'ecs-fargate';
   lastReview: string;
   lastDeployment?: string;
+  workflowVersion: number;
+  deploymentType: 'production' | 'hobbyist';
+  awsRegion: string;
   healthStatus: string;
   currentInfrastructure: {
     hosting: 'ec2' | 'ecs-fargate';
@@ -15,7 +19,7 @@ export interface ProjectManifest {
     pgBouncer: boolean;
     waf: boolean;
   };
-  version: string;
+  manifestVersion?: string;
 }
 
 export function readManifest(projectRoot: string): ProjectManifest | null {
