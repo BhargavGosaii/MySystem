@@ -1,6 +1,6 @@
 # Security Architecture
 
-MySystem is designed as an **AI Production Engineer** that reviews, fixes, and deploys applications directly to your own AWS account. Security is the foundation of this design. By deploying directly into your AWS account, MySystem eliminates SaaS vendor lock-in and ensures that you retain 100% ownership of your infrastructure, logs, and data.
+MySystem is designed as an **AWS Production Engineering Standard** that reviews, verifies, and secures applications directly in your own AWS account. Security is the foundation of this design. By deploying directly into your AWS account, MySystem eliminates SaaS vendor lock-in and ensures that you retain 100% ownership of your infrastructure, logs, and data.
 
 This document outlines the core security practices, authentication mechanisms, IAM scoping rules, and secrets containment strategies utilized by MySystem.
 
@@ -63,7 +63,7 @@ When `SENTRY_DSN` is configured, MySystem integrates Sentry to capture runtime e
 
 ## 5. Security Reviews during AI Engineering Review
 
-As an **AI Production Engineer**, MySystem performs an Engineering Review step before every deployment:
+Under the **MySystem Production Standard**, the verification engine performs an Engineering Review step before every deployment:
 * **Code Scanning**: It looks for hardcoded keys, passwords, and open ports.
 * **Port Binding**: It ensures the web server only binds to the dynamic `PORT` environment variable.
 * **Health Check Scoping**: It verifies that the `/health` or `/healthz` endpoint is open and doesn't leak internal system diagnostics or require authentication.

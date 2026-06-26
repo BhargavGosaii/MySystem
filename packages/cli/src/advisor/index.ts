@@ -112,6 +112,7 @@ function evaluateKnowledgeRules(
 
 export async function runAdvisor(
   characteristics: ProjectCharacteristics,
+  projectRoot?: string,
   knowledgeDir?: string
 ): Promise<ArchitectureReview> {
   // Resolve knowledge base files location
@@ -144,6 +145,30 @@ export async function runAdvisor(
   const recs: Record<string, ComponentRecommendation> = {};
   const decisions: ProductionDecision[] = [];
   const risks: string[] = [];
+
+  // Load existing configuration overrides (AI Freedom)
+  let existingConfig: any = {};
+  if (projectRoot) {
+    try {
+      const mysystemJsonPath = path.join(projectRoot, 'mysystem.json');
+      if (fs.existsSync(mysystemJsonPath)) {
+        existingConfig = JSON.parse(fs.readFileSync(mysystemJsonPath, 'utf8'));
+      }
+    } catch {}
+
+    try {
+      const manifestPath = path.join(projectRoot, '.mysystem', 'manifest.json');
+      if (fs.existsSync(manifestPath)) {
+        const manifestData = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        existingConfig = {
+          ...existingConfig,
+          ...(manifestData.currentInfrastructure || {}),
+          hosting: manifestData.deployment || manifestData.currentInfrastructure?.hosting || existingConfig.hosting,
+          region: manifestData.awsRegion || existingConfig.region
+        };
+      }
+    } catch {}
+  }
 
   // ───────────────────────────────────────────────────────────
   // PART 1: Component Recommendations (existing logic, preserved)
@@ -349,112 +374,190 @@ export async function runAdvisor(
   }
 
   // ───────────────────────────────────────────────────────────
-  // PART 2: Production Decisions (NEW — knowledge-driven)
+  // PART 2: Production Decisions (AI Freedom & Golden Rules)
   // ───────────────────────────────────────────────────────────
 
-  // Hosting Decision (from knowledge rules)
+  // 1. Hosting Decision
   const hostingEval = evaluateKnowledgeRules(computeRules, ctx);
-  const hostingValue = hostingEval?.result || (hasScalingTriggers ? 'ecs-fargate' : 'ec2');
-  const hostingConf = hostingEval?.confidence || 95;
+  let hostingValue = hostingEval?.result || (hasScalingTriggers ? 'ecs-fargate' : 'ec2');
+  let hostingConf = hostingEval?.confidence || 95;
+  let hostingSource = 'knowledge/architecture/compute.md';
+  let hostingReasoning = hostingValue === 'ecs-fargate'
+    ? ['WebSocket or background queue patterns detected.', 'Distributed load balancing required.', '[Golden Rule: Preserve the application\'s architecture]']
+    : ['Single-service architecture.', 'No background workers or WebSocket connections detected.', '[Golden Rule: Minimize AWS monthly cost]'];
+
+  const aiHosting = existingConfig.hosting || (existingConfig.tier === 'production' ? 'ecs-fargate' : existingConfig.tier === 'hobbyist' ? 'ec2' : undefined);
+  if (aiHosting && (aiHosting === 'ec2' || aiHosting === 'ecs-fargate')) {
+    hostingValue = aiHosting;
+    hostingSource = 'ai-config';
+    hostingConf = 100;
+    hostingReasoning = [`Preserved AI decision to use ${hostingValue === 'ecs-fargate' ? 'ECS Fargate' : 'EC2'}.`, '[Golden Rule: Preserve the application\'s architecture]'];
+
+    if (hostingValue === 'ec2' && characteristics.hasWebsockets) {
+      risks.push('AI configured EC2 hosting but the app uses WebSockets. EC2 single-instance lacks container-native load balancing and scaling.');
+    }
+  }
   const hostingCost = hostingValue === 'ecs-fargate' ? computeRules.cost || 15.00 : 3.20;
 
   decisions.push({
     component: 'hosting',
     value: hostingValue,
     confidence: hostingConf,
-    reasoning: hostingValue === 'ecs-fargate'
-      ? ['WebSocket or background queue patterns detected.', 'Distributed load balancing required.']
-      : ['Single-service architecture.', 'No background workers or WebSocket connections detected.'],
-    source: 'knowledge/architecture/compute.md',
+    reasoning: hostingReasoning,
+    source: hostingSource,
     decisionType: 'RECOMMENDATION',
     monthlyCost: hostingCost,
   });
 
-  // Database Decision
+  // 2. Database Decision
+  let dbValue = hasDb ? 'postgresql' : 'none';
+  let dbConf = 95;
+  let dbSource = 'code-inspection';
+  let dbReasoning = hasDb
+    ? [`Detected via ${characteristics.ormLib || characteristics.databaseLib || 'environment configuration'}.`, '[Golden Rule: Never ask a question that can be answered through inspection]']
+    : ['No database dependencies or configuration detected.', '[Golden Rule: Avoid unnecessary infrastructure]'];
+
+  const aiDb = existingConfig.database;
+  if (aiDb !== undefined) {
+    const isDbNeeded = typeof aiDb === 'string' ? aiDb !== 'none' : !!aiDb;
+    dbValue = isDbNeeded ? 'postgresql' : 'none';
+    dbSource = 'ai-config';
+    dbConf = 100;
+    dbReasoning = [`Preserved AI decision to use database: ${dbValue}.`, '[Golden Rule: Preserve the application\'s architecture]'];
+
+    if (!isDbNeeded && hasDb) {
+      risks.push('Database libraries are imported, but database infrastructure is disabled in configuration.');
+    }
+  }
+
   decisions.push({
     component: 'database',
-    value: hasDb ? 'postgresql' : 'none',
-    confidence: 95,
-    reasoning: hasDb
-      ? [`Detected via ${characteristics.ormLib || characteristics.databaseLib || 'environment configuration'}.`]
-      : ['No database dependencies or configuration detected.'],
-    source: 'code-inspection',
+    value: dbValue,
+    confidence: dbConf,
+    reasoning: dbReasoning,
+    source: dbSource,
     decisionType: 'RECOMMENDATION',
-    monthlyCost: hasDb ? 15.00 : 0,
+    monthlyCost: dbValue !== 'none' ? 15.00 : 0,
   });
 
-  // Redis Decision (from knowledge rules)
+  // 3. Redis Decision
   const redisEval = evaluateKnowledgeRules(redisRules, ctx);
-  const redisValue = redisEval?.result === 'true';
-  const redisConf = redisEval?.confidence || 95;
+  let redisValue = redisEval?.result === 'true';
+  let redisConf = redisEval?.confidence || 95;
+  let redisSource = 'knowledge/architecture/redis.md';
+  let redisReasoning = redisValue
+    ? ['Background queue or WebSocket patterns require a distributed broker.', '[Golden Rule: Prefer AWS native services]']
+    : ['No caching, queue, or real-time sync requirements detected.', '[Golden Rule: Avoid unnecessary infrastructure]'];
+
+  const aiRedis = existingConfig.redis;
+  if (aiRedis !== undefined) {
+    redisValue = !!aiRedis;
+    redisSource = 'ai-config';
+    redisConf = 100;
+    redisReasoning = [`Preserved AI decision to use Redis: ${redisValue}.`, '[Golden Rule: Preserve the application\'s architecture]'];
+
+    if (!redisValue && needsRedis) {
+      risks.push('WebSockets or background queues are present, but distributed Redis caching is disabled.');
+    }
+  }
 
   decisions.push({
     component: 'redis',
     value: redisValue,
     confidence: redisConf,
-    reasoning: redisValue
-      ? ['Background queue or WebSocket patterns require a distributed broker.']
-      : ['No caching, queue, or real-time sync requirements detected.'],
-    source: 'knowledge/architecture/redis.md',
+    reasoning: redisReasoning,
+    source: redisSource,
     decisionType: 'RECOMMENDATION',
     monthlyCost: redisValue ? redisRules.cost || 12.00 : 0,
   });
 
-  // PgBouncer Decision (from knowledge rules)
+  // 4. PgBouncer Decision
   const pgbEval = evaluateKnowledgeRules(pgbouncerRules, ctx);
-  const pgbValue = pgbEval?.result === 'true';
-  const pgbConf = pgbEval?.confidence || 90;
+  let pgbValue = pgbEval?.result === 'true';
+  let pgbConf = pgbEval?.confidence || 90;
+  let pgbSource = 'knowledge/architecture/pgbouncer.md';
+  let pgbReasoning = pgbValue
+    ? ['Next.js serverless routes create ephemeral database connections that exhaust connection pools.', '[Golden Rule: Prefer AWS native services]']
+    : ['Long-lived monolithic process manages internal connection pools safely.', '[Golden Rule: Avoid unnecessary complexity]'];
+
+  const aiPgb = existingConfig.pgBouncer !== undefined ? existingConfig.pgBouncer : existingConfig.rdsProxy;
+  if (aiPgb !== undefined) {
+    pgbValue = !!aiPgb;
+    pgbSource = 'ai-config';
+    pgbConf = 100;
+    pgbReasoning = [`Preserved AI decision to use PgBouncer: ${pgbValue}.`, '[Golden Rule: Preserve the application\'s architecture]'];
+  }
 
   decisions.push({
     component: 'pgBouncer',
     value: pgbValue,
     confidence: pgbConf,
-    reasoning: pgbValue
-      ? ['Next.js serverless routes create ephemeral database connections that exhaust connection pools.']
-      : ['Long-lived monolithic process manages internal connection pools safely.'],
-    source: 'knowledge/architecture/pgbouncer.md',
+    reasoning: pgbReasoning,
+    source: pgbSource,
     decisionType: 'RECOMMENDATION',
     monthlyCost: pgbValue ? pgbouncerRules.cost || 15.00 : 0,
   });
 
-  // WAF Decision (from knowledge rules)
+  // 5. WAF Decision
   const wafEval = evaluateKnowledgeRules(securityRules, ctx);
-  const wafValue = wafEval?.result === 'true';
-  const wafConf = wafEval?.confidence || 75;
+  let wafValue = wafEval?.result === 'true';
+  let wafConf = wafEval?.confidence || 75;
+  let wafSource = 'knowledge/architecture/security.md';
+  let wafReasoning = wafValue
+    ? ['Database-backed application requires protection against SQL injection and XSS bots.', '[Golden Rule: Prefer AWS native services]']
+    : ['Static-first application with no database target routes.', '[Golden Rule: Avoid unnecessary infrastructure]'];
+
+  const aiWaf = existingConfig.waf;
+  if (aiWaf !== undefined) {
+    wafValue = !!aiWaf;
+    wafSource = 'ai-config';
+    wafConf = 100;
+    wafReasoning = [`Preserved AI decision to use WAF: ${wafValue}.`, '[Golden Rule: Preserve the application\'s architecture]'];
+  }
 
   decisions.push({
     component: 'waf',
     value: wafValue,
     confidence: wafConf,
-    reasoning: wafValue
-      ? ['Database-backed application requires protection against SQL injection and XSS bots.']
-      : ['Static-first application with no database target routes.'],
-    source: 'knowledge/architecture/security.md',
+    reasoning: wafReasoning,
+    source: wafSource,
     decisionType: 'RECOMMENDATION',
     monthlyCost: wafValue ? securityRules.cost || 8.00 : 0,
   });
 
-  // Sentry Decision (from knowledge rules)
+  // 6. Sentry Decision
   const sentryEval = evaluateKnowledgeRules(sentryRules, ctx);
-  const sentryValue = sentryEval?.result === 'true';
-  const sentryConf = sentryEval?.confidence || 70;
+  let sentryValue = sentryEval?.result === 'true';
+  let sentryConf = sentryEval?.confidence || 70;
+  let sentrySource = 'knowledge/architecture/sentry.md';
+  let sentryReasoning = sentryValue
+    ? [`Sentry SDK detected: ${characteristics.sentryLib}.`, '[Golden Rule: Never ask a question that can be answered through inspection]']
+    : ['No error tracking libraries found. CloudWatch will handle baseline logging.', '[Golden Rule: Avoid unnecessary infrastructure]'];
+
+  const aiSentry = existingConfig.sentry !== undefined ? existingConfig.sentry : existingConfig.sentryDsn;
+  if (aiSentry !== undefined) {
+    sentryValue = typeof aiSentry === 'string' ? aiSentry !== 'none' : !!aiSentry;
+    sentrySource = 'ai-config';
+    sentryConf = 100;
+    sentryReasoning = [`Preserved AI decision to use Sentry: ${sentryValue}.`, '[Golden Rule: Preserve the application\'s architecture]'];
+  }
 
   decisions.push({
     component: 'sentry',
     value: sentryValue,
     confidence: sentryConf,
-    reasoning: sentryValue
-      ? [`Sentry SDK detected: ${characteristics.sentryLib}.`]
-      : ['No error tracking libraries found. CloudWatch will handle baseline logging.'],
-    source: 'knowledge/architecture/sentry.md',
+    reasoning: sentryReasoning,
+    source: sentrySource,
     decisionType: 'RECOMMENDATION',
     monthlyCost: 0,
   });
 
-  // SAFE decisions — always applied, no discussion needed
-  let detectedRegion = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || '';
-  let regionSource = 'env-config';
-  let regionReasoning = ['Read from AWS_REGION/AWS_DEFAULT_REGION environment variable.'];
+  // 7. Region Decision
+  let detectedRegion = existingConfig.region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || '';
+  let regionSource = existingConfig.region ? 'ai-config' : 'env-config';
+  let regionReasoning = existingConfig.region
+    ? [`Preserved AI decision to use region '${detectedRegion}'.`, '[Golden Rule: Preserve the application\'s architecture]']
+    : ['Read from AWS_REGION/AWS_DEFAULT_REGION environment variable.', '[Golden Rule: Never ask a question that can be answered through inspection]'];
 
   if (!detectedRegion) {
     try {
@@ -463,7 +566,7 @@ export async function runAdvisor(
       if (awsRegion) {
         detectedRegion = awsRegion;
         regionSource = 'aws-cli-config';
-        regionReasoning = [`Auto-detected default region '${detectedRegion}' from configured AWS CLI profile.`];
+        regionReasoning = [`Auto-detected default region '${detectedRegion}' from configured AWS CLI profile.`, '[Golden Rule: Never ask a question that can be answered through inspection]'];
       }
     } catch {
       // Ignore error and fall back
@@ -473,7 +576,7 @@ export async function runAdvisor(
   if (!detectedRegion) {
     detectedRegion = 'us-east-1';
     regionSource = 'default-fallback';
-    regionReasoning = ["Defaulting to 'us-east-1' (no active profile or environment region override detected)."];
+    regionReasoning = ["Defaulting to 'us-east-1' (no active profile or environment region override detected).", '[Golden Rule: Minimize AWS monthly cost]'];
   }
 
   decisions.push({
@@ -486,12 +589,12 @@ export async function runAdvisor(
     monthlyCost: 0,
   });
 
-
+  // 8. Static / Budget Decisions
   decisions.push({
     component: 'cloudwatch',
     value: true,
     confidence: 100,
-    reasoning: ['Production best practice. Always enabled.'],
+    reasoning: ['Production best practice. Always enabled.', '[Golden Rule: Prefer AWS native services]'],
     source: 'best-practice',
     decisionType: 'SAFE',
     monthlyCost: 0,
@@ -501,54 +604,58 @@ export async function runAdvisor(
     component: 'budgetAlerts',
     value: true,
     confidence: 100,
-    reasoning: ['Cost protection. Always enabled.'],
+    reasoning: ['Cost protection. Always enabled.', '[Golden Rule: Minimize AWS monthly cost]'],
     source: 'best-practice',
     decisionType: 'SAFE',
     monthlyCost: 0,
   });
 
-  const domainName = process.env.MYSYSTEM_DOMAIN || '';
+  // 9. Domain Decision
+  let domainName = existingConfig.domainName || existingConfig.domain || process.env.MYSYSTEM_DOMAIN || '';
+  let domainSource = (existingConfig.domainName || existingConfig.domain) ? 'ai-config' : 'env-config';
+  let domainReasoning = domainName
+    ? [`Custom domain configured: ${domainName}.`, '[Golden Rule: Never ask a question that can be answered through inspection]']
+    : ['No custom domain configured. AWS default endpoint will be used.', '[Golden Rule: Minimize AWS monthly cost]'];
+
   decisions.push({
     component: 'domain',
     value: domainName || 'none',
     confidence: 95,
-    reasoning: domainName
-      ? [`Custom domain detected: ${domainName}.`]
-      : ['No custom domain configured. AWS default endpoint will be used.'],
-    source: 'env-config',
+    reasoning: domainReasoning,
+    source: domainSource,
     decisionType: 'SAFE',
     monthlyCost: 0,
   });
 
   // ───────────────────────────────────────────────────────────
-  // PART 3: Optimization Pass
+  // PART 3: Optimization Pass (aligned with Golden Rules)
   // ───────────────────────────────────────────────────────────
 
   const getDecision = (key: string) => decisions.find(d => d.component === key);
 
   // Optimization 1: Disable Redis if not truly needed
   const redisDec = getDecision('redis');
-  if (redisDec && redisDec.value === true && !characteristics.hasWebsockets && !characteristics.queueLib && !characteristics.redisUrlConfigured) {
+  if (redisDec && redisDec.value === true && !characteristics.hasWebsockets && !characteristics.queueLib && !characteristics.redisUrlConfigured && redisDec.source !== 'ai-config') {
     redisDec.value = false;
     redisDec.monthlyCost = 0;
-    redisDec.reasoning.push('Optimization: Redis removed — no queue, WebSocket, or session indicators detected.');
+    redisDec.reasoning.push('Optimization: Redis removed — no queue, WebSocket, or session indicators detected. [Golden Rule: Avoid unnecessary infrastructure]');
   }
 
   // Optimization 2: Disable PgBouncer if hosting is EC2 (single instance)
   const pgbDec = getDecision('pgBouncer');
   const hostDec = getDecision('hosting');
-  if (pgbDec && pgbDec.value === true && hostDec && hostDec.value === 'ec2') {
+  if (pgbDec && pgbDec.value === true && hostDec && hostDec.value === 'ec2' && pgbDec.source !== 'ai-config') {
     pgbDec.value = false;
     pgbDec.monthlyCost = 0;
-    pgbDec.reasoning.push('Optimization: PgBouncer removed — single EC2 instance manages connections internally.');
+    pgbDec.reasoning.push('Optimization: PgBouncer removed — single EC2 instance manages connections internally. [Golden Rule: Avoid unnecessary complexity]');
   }
 
   // Optimization 3: Disable WAF if no database
   const wafDec = getDecision('waf');
-  if (wafDec && wafDec.value === true && !hasDb) {
+  if (wafDec && wafDec.value === true && !hasDb && wafDec.source !== 'ai-config') {
     wafDec.value = false;
     wafDec.monthlyCost = 0;
-    wafDec.reasoning.push('Optimization: WAF removed — no database routes to protect.');
+    wafDec.reasoning.push('Optimization: WAF removed — no database routes to protect. [Golden Rule: Avoid unnecessary infrastructure]');
   }
 
   // ───────────────────────────────────────────────────────────

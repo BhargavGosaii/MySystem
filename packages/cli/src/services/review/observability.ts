@@ -49,6 +49,36 @@ export async function scanObservability(characteristics: ProjectCharacteristics,
     });
   }
 
+  // 1. Structured Logging check
+  let hasStructuredLogging = false;
+  try {
+    const packageJsonPath = path.join(projectRoot, 'package.json');
+    if (fs.existsSync(packageJsonPath)) {
+      const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+      const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+      if (deps.pino || deps.winston || deps.bunyan || characteristics.framework === 'nextjs') {
+        hasStructuredLogging = true;
+      }
+    }
+  } catch {}
+
+  if (!hasStructuredLogging && characteristics.framework !== 'unknown') {
+    findings.push({
+      id: 'obs-missing-structured-logging',
+      category: 'observability',
+      title: 'Missing Structured Logging',
+      description: 'The project does not use structured JSON logging libraries like Pino.',
+      action: 'MANUAL',
+      evidence: ['Checked package.json dependencies. Pino, Winston, or Bunyan not found.'],
+      recommendation: 'Integrate pino or winston to format production logs as structured JSON, making them queryable in CloudWatch.',
+      fixed: false,
+      blocksDeployment: false,
+      impact: {
+        latency: 'Reduces log parsing overhead and enables advanced CloudWatch queries.'
+      }
+    });
+  }
+
   return findings;
 }
 

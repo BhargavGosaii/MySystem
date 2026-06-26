@@ -2,7 +2,7 @@
 
 First off, thank you for taking the time to contribute! 🎉
 
-MySystem is **An AI Production Engineer** that helps developers automatically review, fix, and deploy applications directly into their own AWS accounts. Contributions from the open-source community are key to expanding its capabilities and keeping the engine robust.
+MySystem is the **AWS Production Engineering Standard** followed by AI coding agents to automatically review, verify, and deploy applications directly into developer AWS accounts. Contributions from the open-source community are key to expanding its capabilities and keeping the engine robust.
 
 ---
 
@@ -77,7 +77,7 @@ mysystem init
 
 When contributing code, please ensure you follow these standards:
 1. **TypeScript**: Write clean, strongly typed TypeScript code. Avoid using `any` unless absolutely necessary.
-2. **Branding**: When writing or updating documentation or CLI prompts, always describe MySystem as **An AI Production Engineer**.
+2. **Branding**: When writing or updating documentation or CLI prompts, always describe MySystem as the **AWS Production Engineering Standard** (or **AWS Production Standard for AI Coding Agents**).
 3. **Statelessness**: Ensure any commands or workflows you write do not rely on local file persistence, as target environments are ephemeral.
 4. **Port Binding**: Ensure any generated server templates dynamically bind to `process.env.PORT`.
 5. **No SaaS Lock-in**: All infrastructure modifications should use pure Terraform and standard Docker/GitHub Actions. Do not write proprietary wrappers or vendor-locked APIs.

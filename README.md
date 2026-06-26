@@ -1,6 +1,6 @@
-# MySystem - AI Production Engineer
+# MySystem - AWS Production Standard for AI Coding Agents
 
-MySystem is an AI Production Engineer. It reviews, fixes, and deploys applications into your own AWS account with minimal manual configuration.
+MySystem is the AWS Production Engineering Standard followed by AI coding agents. It reviews, verifies, and secures your deployments directly into your own AWS account with minimal manual configuration.
 
 ---
 
@@ -9,20 +9,23 @@ MySystem is an AI Production Engineer. It reviews, fixes, and deploys applicatio
 **Developer**:
 > *"Use MySystem to productionize and deploy this application."*
 
-**AI**:
-> ✓ Reviews application  
-> ✓ Fixes production issues  
-> ✓ Configures AWS  
-> ✓ Deploys  
-> ✓ Verifies  
+**AI Agent**:
+> ✓ Follows the Production Standard  
+> ✓ Reviews application for security & reliability  
+> ✓ Configures AWS infrastructure  
+> ✓ Deploys cleanly via GitHub Actions OIDC  
+> ✓ Verifies the deployment  
 > ✓ Returns production URL: `https://app.mysystem-deployment.amazonaws.com`
 
 ---
 
 ## 🚀 What is MySystem?
-MySystem is designed for developers and "vibe coders" who can build applications but do not want to learn AWS networking, Terraform syntax, Dockerfile optimizations, subnets, IAM policies, or SSL routing. 
 
-It acts as a senior-grade production engineer in your codebase, automatically correcting safe infrastructure issues (like creating optimized Dockerfiles and budget controls) and setting up secure, passwordless integrations between GitHub Actions and AWS using OIDC Trust.
+MySystem is designed for developers and "vibe coders" who use AI agents to build applications but want to ensure those applications conform to strict production standards. 
+
+**"The AI owns the application. MySystem owns production readiness."**
+
+MySystem sits as an active auditing and safety verification layer between the AI agent and AWS. It enforces the AWS Production Engineering Standard in your codebase, automatically correcting safe boilerplate issues (like creating optimized Dockerfiles and budget controls), verifying security rules, and setting up secure, passwordless integrations between GitHub Actions and AWS using OIDC Trust.
 
 ---
 

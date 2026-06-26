@@ -1,6 +1,6 @@
 # MySystem Architecture
 
-MySystem is designed as a zero-dependency, local-first **AI Production Engineer** that coordinates software auditing, infrastructure generation, and secure deployments.
+MySystem is designed as a zero-dependency, local-first **AWS Production Engineering Standard** that coordinates software verification, infrastructure auditing, and secure deployments.
 
 ---
 
@@ -23,10 +23,10 @@ MySystem is structured into modular components within a TypeScript workspace:
 The `WorkflowEngine` is the sole coordinator of deployment lifecycle operations. No service invokes another service directly; all state and control flow are managed by the engine:
 
 1. **Inspect Project**: Analyzes the directory to detect code frameworks, entry points, container ports, and dependencies.
-2. **Engineering Review**: Executes deep security, database configuration, and telemetry scans.
+2. **Engineering Review**: Executes deep security, database configuration, and telemetry scans against the production standard.
 3. **Automatically Apply Safe Infrastructure Fixes**: Generates missing Dockerfiles, health routes, and GitHub Actions pipelines automatically.
 4. **Re-run Engineering Review**: Re-scans the repository to verify that auto-fixes resolved the target findings.
-5. **Advisor Engineering Judgment**: The Advisor evaluates all project characteristics against the knowledge base to autonomously determine hosting tier, database, caching, security, monitoring, and region. Decisions are rendered as a Production Plan table. If any BLOCKER decisions exist, the workflow halts. Otherwise, it continues automatically with zero interactive prompts.
+5. **Advisor Engineering Verification**: The Advisor evaluates all project characteristics and AI choices against the production standard to verify the hosting tier, database, caching, security, monitoring, and region. Decisions are rendered as a Production Plan table. If any BLOCKER decisions exist, the workflow halts. Otherwise, it continues automatically with zero interactive prompts.
 6. **Prepare AWS Environment**: Ensures AWS CLI and GitHub CLI tools are installed and logged in, then deploys the OIDC credentials stack.
 7. **Configure GitHub Actions**: Scaffolds standard Terraform configuration files (`/terraform`) and workflow templates.
 8. **Deploy**: Builds, tags, and pushes Docker images to ECR, and deploys infrastructure passwordless via OIDC.
@@ -60,14 +60,14 @@ Auditing checks are modularized under `packages/cli/src/services/review/`:
 
 ---
 
-## 5. Advisor: Engineering Judgment Layer
+## 5. Advisor: Engineering Verification Layer
 
-The Advisor (`packages/cli/src/advisor/`) is MySystem's single authoritative reasoning component. It is responsible for reading project facts, evaluating engineering knowledge, and producing all production decisions.
+The Advisor (`packages/cli/src/advisor/`) is MySystem's single authoritative reasoning component. It is responsible for reading project facts, evaluating engineering knowledge, verifying the AI coding agent's choices, and producing all production decisions.
 
 ### Architecture Flow
 
 ```
-Inspectors (project facts) → Advisor (judgment) → Production Plan (rendered) → Planner (constraints) → Deploy
+AI Coding Agent (builds app) → MySystem Standard (reviews & validates) → Production Plan → Terraform/Actions → AWS (provisions)
 ```
 
 ### Decision Types

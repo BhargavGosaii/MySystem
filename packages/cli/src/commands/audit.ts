@@ -3,7 +3,7 @@ import { reviewService } from '../services/review';
 import { planningService } from '../services/plan';
 
 export async function runAudit(projectRoot: string) {
-  console.log('\n\x1b[1m🔍 Auditing project codebase via AI Production Engineer...\x1b[0m\n');
+  console.log('\n\x1b[1m🔍 Auditing project codebase via AWS Production Engineering Standard...\x1b[0m\n');
 
   try {
     const characteristics = await inspectService.inspect(projectRoot);
@@ -32,7 +32,7 @@ export async function runAudit(projectRoot: string) {
     const blockers = findings.filter(f => f.blocksDeployment);
 
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('              \x1b[1m\x1b[32mMYSYSTEM AI PRODUCTION REVIEW REPORT\x1b[0m');
+    console.log('              \x1b[1m\x1b[32mMYSYSTEM PRODUCTION REVIEW REPORT\x1b[0m');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log(`Overall Production Readiness: \x1b[1m${score}%\x1b[0m`);
     console.log(`Estimated Monthly AWS Cost:   \x1b[33m$${plan.monthlyEstimate.toFixed(2)}/month\x1b[0m`);

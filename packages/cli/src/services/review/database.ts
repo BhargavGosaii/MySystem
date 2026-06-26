@@ -47,6 +47,24 @@ export async function scanDatabase(characteristics: ProjectCharacteristics, proj
     });
   }
 
+  // Database Indexing check
+  if (characteristics.ormLib || characteristics.databaseLib) {
+    findings.push({
+      id: 'db-missing-indexing',
+      category: 'database',
+      title: 'Database Index Optimization',
+      description: 'Ensure that columns frequently used in WHERE, JOIN, or ORDER BY clauses have database indexes.',
+      action: 'MANUAL',
+      evidence: ['Database ORM/libraries found in use.'],
+      recommendation: 'Verify database schemas and add indexes for foreign keys and lookup fields to prevent slow query performance.',
+      fixed: false,
+      blocksDeployment: false,
+      impact: {
+        latency: 'Reduces database query latency and prevents full-table scans.'
+      }
+    });
+  }
+
   return findings;
 }
 

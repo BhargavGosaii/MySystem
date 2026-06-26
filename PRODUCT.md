@@ -11,16 +11,17 @@ This document defines the core product vision, target audience, promises, and no
 ---
 
 ## 🤝 The Product Promise
-* **Autonomous Engineering Judgment**: The Advisor inspects the application, evaluates evidence from the knowledge base, and automatically determines the optimal production configuration — hosting tier, database, caching, security, monitoring, and region. Developers are never interrupted with infrastructure questions.
+
+* **Strict Engineering Verification**: The Advisor evaluates the application characteristics and proposed changes, verifies the AI agent's decisions against the AWS Production Standard, and highlights any security, cost, or reliability risks.
 * **Zero-Decision Deployment**: The entire lifecycle executes inside a single conversation: **Inspect → Review → AutoFix → Advisor Judgment → Production Plan → Provision → Deploy → Verify**. The only manual inputs required are AWS authentication, GitHub authentication, and custom domain DNS configuration.
 * **Clean & Transparent**: No hidden markups or proprietary hosting lock-in. Everything is deployed directly to the user's personal AWS account using wholesale-pricing architecture defaults. All decisions are explained with reasoning.
-* **AI-First Integration**: Designed from the ground up to be discovered, run, and maintained by IDE-based AI coding agents.
+* **AI-First Integration**: Designed from the ground up to be discovered, run, and followed by IDE-based AI coding agents.
 
 ---
 
 ## 🧠 The Advisor
 
-The Advisor is MySystem's engineering judgment layer. It is the single authoritative component responsible for all production decisions.
+The Advisor is MySystem's engineering verification layer. It is the single authoritative component responsible for auditing and validating production decisions.
 
 **Decision Types:**
 * **SAFE**: Infrastructure changes that always proceed automatically (Docker, CloudWatch, Budget Alerts, Region).

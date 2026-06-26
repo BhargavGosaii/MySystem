@@ -1,12 +1,14 @@
 import { ProductionDecision } from '../advisor';
+import { EngineeringFinding } from '../services/review';
 
 /**
- * Renders the Production Plan summary table to the terminal.
+ * Renders the Production Plan and Review summary to the terminal.
  * This is the primary output the developer sees before deployment proceeds.
  */
 export function renderProductionPlan(
   framework: string,
   decisions: ProductionDecision[],
+  findings: EngineeringFinding[],
   totalCost: number,
   confidence: number
 ): void {
@@ -37,7 +39,26 @@ export function renderProductionPlan(
     'ecs-fargate': 'ECS Fargate (Managed Containers)',
   };
 
+  // 1. Render Verdict
+  const blockerDecisions = decisions.filter(d => d.decisionType === 'BLOCKER');
+  const unresolvedBlockers = findings.filter(f => f.blocksDeployment && !f.fixed);
+  const hasAnyBlocker = blockerDecisions.length > 0 || unresolvedBlockers.length > 0;
+
   console.log('\n\x1b[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
+  console.log('\x1b[1m              PRODUCTION REVIEW VERDICT         \x1b[0m');
+  console.log('\x1b[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
+  console.log('Can this application safely run in production on AWS?');
+  if (hasAnyBlocker) {
+    console.log('\x1b[31m👉 NO (Blocked by active architectural or security issues)\x1b[0m');
+  } else if (findings.filter(f => !f.fixed && f.action !== 'IGNORE').length > 0) {
+    console.log('\x1b[33m👉 YES (With recommended optimizations)\x1b[0m');
+  } else {
+    console.log('\x1b[32m👉 YES (All checks verified successfully!)\x1b[0m');
+  }
+  console.log('\x1b[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m\n');
+
+  // 2. Render Plan Table
+  console.log('\x1b[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
   console.log('\x1b[1m              PRODUCTION PLAN                   \x1b[0m');
   console.log('\x1b[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m\n');
 
@@ -92,7 +113,7 @@ export function renderProductionPlan(
 
   // Monitoring (always on)
   printDecisionRow('Monitoring', 'CloudWatch Enabled');
-  printReasonRows(['Production best practice.']);
+  printReasonRows(['Production best practice.', '[Golden Rule: Prefer AWS native services]']);
   console.log('');
 
   // Sentry
@@ -113,8 +134,53 @@ export function renderProductionPlan(
   console.log('\x1b[1m──────────────────────────────────────────────\x1b[0m');
   printDecisionRow('Estimated AWS Cost', `\x1b[32m$${totalCost.toFixed(2)}/month\x1b[0m`);
   printDecisionRow('Deployment Confidence', `\x1b[32m${confidence}%\x1b[0m`);
-
+  console.log('\x1b[90mℹ️  Decisions aligned with the MySystem Production Standard (AGENTS.md)\x1b[0m');
   console.log('\x1b[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m\n');
+
+  // 3. Render Review Findings
+  const autofixes = findings.filter(f => f.action === 'AUTOFIX');
+  const recommendations = findings.filter(f => !f.blocksDeployment && f.action !== 'AUTOFIX' && f.action !== 'IGNORE' && !f.fixed);
+  const blockers = findings.filter(f => f.blocksDeployment && !f.fixed);
+
+  if (blockers.length > 0) {
+    console.log('\x1b[1m\x1b[31m[🛑 BLOCKERS - HALTING DEPLOYMENT]\x1b[0m');
+    blockers.forEach(f => {
+      console.log(`  - \x1b[1m${f.title}\x1b[0m (Risk: \x1b[31m${f.impact?.securityRisk || 'High'}\x1b[0m)`);
+      console.log(`    \x1b[90mReasoning:\x1b[0m   ${f.description}`);
+      console.log(`    \x1b[90mFix Guide:\x1b[0m   ${f.recommendation}`);
+      if (f.impact?.costSavings) {
+        console.log(`    \x1b[90mCost Impact:\x1b[0m ${f.impact.costSavings}`);
+      }
+      console.log('');
+    });
+  }
+
+  if (recommendations.length > 0) {
+    console.log('\x1b[1m\x1b[33m[⚠️  RECOMMENDATIONS - AUTO-PROCEEDING]\x1b[0m');
+    recommendations.forEach(f => {
+      const riskText = f.impact?.securityRisk ? `Risk: \x1b[33m${f.impact.securityRisk}\x1b[0m` : '';
+      console.log(`  - \x1b[1m${f.title}\x1b[0m ${riskText ? `(${riskText})` : ''}`);
+      console.log(`    \x1b[90mReasoning:\x1b[0m   ${f.description}`);
+      console.log(`    \x1b[90mSuggestion:\x1b[0m  ${f.recommendation}`);
+      if (f.impact?.latency) {
+        console.log(`    \x1b[90mExpected Benefit:\x1b[0m ${f.impact.latency}`);
+      }
+      if (f.impact?.costSavings) {
+        console.log(`    \x1b[90mCost Impact:\x1b[0m ${f.impact.costSavings}`);
+      }
+      console.log('');
+    });
+  }
+
+  if (autofixes.length > 0) {
+    console.log('\x1b[1m\x1b[32m[🔧 SAFE - AUTOMATICALLY INJECTED]\x1b[0m');
+    autofixes.forEach(f => {
+      console.log(`  - \x1b[1m${f.title}\x1b[0m (Applied automatically by MySystem verification engine)`);
+      console.log(`    \x1b[90mReasoning:\x1b[0m   ${f.description}`);
+      console.log(`    \x1b[90mAction Taken:\x1b[0m ${f.recommendation}`);
+      console.log('');
+    });
+  }
 }
 
 function printDecisionRow(label: string, value: string): void {

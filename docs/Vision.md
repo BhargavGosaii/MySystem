@@ -14,12 +14,12 @@ For a software developer or "vibe coder" who builds applications using AI, this 
 
 ---
 
-## 2. The Solution: The AI Production Engineer
+## 2. The Solution: The AWS Production Engineering Standard
 
 MySystem is **not** a deployment framework, a Terraform wrapper, or a hosting platform. 
 
-MySystem is an **AI Production Engineer**. It is designed to act exactly like an experienced staff engineer reviewing software before deployment:
-* **Outcome-Focused**: It does not force you to write Terraform code or configure Dockerfiles. It handles the details automatically.
+MySystem is the **AWS Production Engineering Standard** that AI coding agents follow. It is designed to act exactly like an experienced staff engineer reviewing software and validating infrastructure before deployment:
+* **Verification-Focused**: It does not force you to write Terraform code or configure Dockerfiles. It verifies that the AI's generated files conform to strict cloud standards.
 * **100% Developer Ownership**: Every configuration, Dockerfile, and Terraform resource blueprint is generated directly inside your local repository. You own the code.
 * **Wholesale Cloud Billing**: Deploys directly into your personal AWS account. You pay AWS directly for your exact consumption, with zero vendor markup.
-* **AI-First Design**: The interface is optimized for conversation. The developer tells the IDE-based AI agent to deploy, and the AI agent runs MySystem autonomously in the background to audit, fix, and deploy the application.
+* **AI-First Design**: The interface is optimized for conversation. The developer tells the IDE-based AI agent to deploy, and the AI agent uses MySystem autonomously in the background to verify, audit, fix, and deploy the application.

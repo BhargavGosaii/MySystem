@@ -109,14 +109,13 @@ export class WorkflowEngine {
       console.log('\n🔬 Re-running Engineering Review to Verify Fixes...');
       this.context.findings = await reviewService.review(this.context.characteristics, this.context.projectRoot);
 
-      // 5. Engineering Judgment — Advisor produces all decisions autonomously
+      // 5. Engineering Verification — Advisor reviews all decisions against standard
       this.context.currentState = 'DECIDING';
       this.renderProgress(3);
 
-      // The Advisor runs inside planningService.plan() and produces the ArchitectureReview
-      // with decisions[]. We call it here to get the review for rendering.
+      // The Advisor runs and produces the ArchitectureReview with decisions[] and risks
       const { runAdvisor } = await import('../advisor');
-      const architectureReview = await runAdvisor(this.context.characteristics);
+      const architectureReview = await runAdvisor(this.context.characteristics, this.context.projectRoot);
 
       // Extract decisions from the Advisor
       const hostingDecision = architectureReview.decisions.find(d => d.component === 'hosting');
@@ -133,10 +132,11 @@ export class WorkflowEngine {
       const securityLevel = this.context.needsDatabase ? 'waf-shielded' : 'basic';
       const domainName = domainDecision?.value !== 'none' ? (domainDecision?.value || '') : '';
 
-      // Render Production Plan
+      // Render Production Plan & Review Verdict
       renderProductionPlan(
         this.context.characteristics.framework,
         architectureReview.decisions,
+        this.context.findings,
         architectureReview.totalMonthlyCost,
         architectureReview.deploymentConfidence
       );
