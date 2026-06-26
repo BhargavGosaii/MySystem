@@ -45,3 +45,17 @@ if (fs.existsSync(srcAgents)) {
 } else {
   console.error('  ❌ Source AGENTS.md not found at:', srcAgents);
 }
+
+const srcKnowledge = path.join(cliDir, 'src', 'knowledge');
+const destKnowledge = path.join(cliDir, 'dist', 'knowledge');
+
+console.log('Copying knowledge base to CLI dist package...');
+if (fs.existsSync(srcKnowledge)) {
+  if (fs.existsSync(destKnowledge)) {
+    fs.rmSync(destKnowledge, { recursive: true, force: true });
+  }
+  copyDirSync(srcKnowledge, destKnowledge);
+  console.log('  ✅ Knowledge base copied.');
+} else {
+  console.error('  ❌ Source knowledge folder not found at:', srcKnowledge);
+}
