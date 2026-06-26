@@ -1,6 +1,8 @@
 # MySystem Architecture
 
-MySystem is designed as a zero-dependency, local-first **AWS Production Engineering Standard** that coordinates software verification, infrastructure auditing, and secure deployments.
+MySystem is designed as a zero-dependency, local-first **open-source Production Engineering Standard** that coordinates software verification, infrastructure auditing, and secure deployments. 
+
+**"The AI owns the application. MySystem owns production readiness."**
 
 ---
 
@@ -23,10 +25,10 @@ MySystem is structured into modular components within a TypeScript workspace:
 The `WorkflowEngine` is the sole coordinator of deployment lifecycle operations. No service invokes another service directly; all state and control flow are managed by the engine:
 
 1. **Inspect Project**: Analyzes the directory to detect code frameworks, entry points, container ports, and dependencies.
-2. **Engineering Review**: Executes deep security, database configuration, and telemetry scans against the production standard.
+2. **Production Review**: Executes deep security, database configuration, and telemetry scans against the Production Standards.
 3. **Automatically Apply Safe Infrastructure Fixes**: Generates missing Dockerfiles, health routes, and GitHub Actions pipelines automatically.
-4. **Re-run Engineering Review**: Re-scans the repository to verify that auto-fixes resolved the target findings.
-5. **Advisor Engineering Verification**: The Advisor evaluates all project characteristics and AI choices against the production standard to verify the hosting tier, database, caching, security, monitoring, and region. Decisions are rendered as a Production Plan table. If any BLOCKER decisions exist, the workflow halts. Otherwise, it continues automatically with zero interactive prompts.
+4. **Re-run Production Review**: Re-scans the repository to verify that auto-fixes resolved the target findings.
+5. **Production Plan Generation**: The verification engine evaluates all project characteristics and AI choices against the Production Standards to verify the hosting tier, database, caching, security, monitoring, and region. Decisions are rendered as a Production Plan. If any BLOCKER decisions exist, the workflow halts. Otherwise, it continues automatically.
 6. **Prepare AWS Environment**: Ensures AWS CLI and GitHub CLI tools are installed and logged in, then deploys the OIDC credentials stack.
 7. **Configure GitHub Actions**: Scaffolds standard Terraform configuration files (`/terraform`) and workflow templates.
 8. **Deploy**: Builds, tags, and pushes Docker images to ECR, and deploys infrastructure passwordless via OIDC.
@@ -60,14 +62,14 @@ Auditing checks are modularized under `packages/cli/src/services/review/`:
 
 ---
 
-## 5. Advisor: Engineering Verification Layer
+## 5. The Production Review and Plan Engine
 
-The Advisor (`packages/cli/src/advisor/`) is MySystem's single authoritative reasoning component. It is responsible for reading project facts, evaluating engineering knowledge, verifying the AI coding agent's choices, and producing all production decisions.
+The verification engine (`packages/cli/src/advisor/`) is MySystem's core reasoning component. It is responsible for reading project characteristics, evaluating engineering knowledge, verifying the AI coding agent's choices against the Production Standards, and producing the Production Plan.
 
 ### Architecture Flow
 
 ```
-AI Coding Agent (builds app) → MySystem Standard (reviews & validates) → Production Plan → Terraform/Actions → AWS (provisions)
+AI Coding Agent (builds app) ➔ MySystem Standard (reviews & validates) ➔ Production Plan ➔ Terraform/Actions ➔ AWS (provisions)
 ```
 
 ### Decision Types
@@ -92,7 +94,7 @@ Adding support for new technologies primarily involves adding or updating knowle
 
 ### Optimization Pass
 
-After all decisions are produced, the Advisor runs a cost optimization sweep:
+After all decisions are produced, the verification engine runs a cost optimization sweep:
 * Removes Redis if no queue, WebSocket, or session indicators exist.
 * Removes PgBouncer if the hosting tier is EC2 (single-instance connection pool is sufficient).
 * Removes WAF if no database routes exist to protect.

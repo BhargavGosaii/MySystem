@@ -1,14 +1,14 @@
 # Frequently Asked Questions (FAQ)
 
 ## 1. What is MySystem?
-MySystem is the **AWS Production Engineering Standard** designed to bridge the gap between application development and cloud operations. It acts as an autonomous handbook and verification standard that reviews your code, automatically fixes common production-readiness issues (like incorrect port bindings or missing health checks), and deploys the application directly into your own AWS account using industry-standard tools (Terraform, Docker, and GitHub Actions).
+MySystem is an **open-source Production Engineering Standard for AI coding agents deploying to AWS**. It bridges the gap between application development and cloud operations. It acts as a standard guide and verification system that audits your code, automatically applies safe boilerplate fixes (like container port mappings or health endpoints), and verifies deployments directly in your own AWS account using standard tools (Terraform, Docker, and GitHub Actions).
 
 ---
 
-## 2. Why is MySystem called an "AWS Production Engineering Standard"?
+## 2. Why is MySystem described as a "Production Engineering Standard"?
 Traditional CI/CD tools are passive pipelines: they run whatever scripts you write, and if a deployment fails, they leave it to you to debug. 
 
-MySystem is active. It establishes a set of guidelines and verification checks that AI coding agents follow. It inspects your project, performs a comprehensive engineering review, corrects configuration deficiencies (such as updating hardcoded ports, generating health checks, or setting up Dockerfiles), and handles the deployment verification. It acts as your codebase's built-in DevOps auditor.
+MySystem is active. It establishes a set of guidelines and verification checks that AI coding agents follow. It inspects your project, performs a comprehensive engineering review, corrects configuration deficiencies (such as updating hardcoded ports, generating health checks, or setting up Dockerfiles), and validates the deployment. It acts as your codebase's built-in DevOps auditor.
 
 ---
 

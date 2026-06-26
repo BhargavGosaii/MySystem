@@ -61,9 +61,9 @@ When `SENTRY_DSN` is configured, MySystem integrates Sentry to capture runtime e
 
 ---
 
-## 5. Security Reviews during AI Engineering Review
+## 5. Security Reviews during Production Review
 
-Under the **MySystem Production Standard**, the verification engine performs an Engineering Review step before every deployment:
+Under the **MySystem Production Standards**, the verification engine performs a Production Review step before every deployment:
 * **Code Scanning**: It looks for hardcoded keys, passwords, and open ports.
 * **Port Binding**: It ensures the web server only binds to the dynamic `PORT` environment variable.
 * **Health Check Scoping**: It verifies that the `/health` or `/healthz` endpoint is open and doesn't leak internal system diagnostics or require authentication.
