@@ -30,3 +30,7 @@ Low (integrated entirely at the application code level via environment variables
 
 ## Approximate Monthly Cost
 $0.00 (utilizes Sentry's free developer tier baseline limits).
+
+## Confidence Rules
+- IF sentryLib OR sentryDsnConfigured THEN true CONFIDENCE 95
+- IF NOT sentryLib AND NOT sentryDsnConfigured THEN false CONFIDENCE 70

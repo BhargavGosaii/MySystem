@@ -11,9 +11,23 @@ This document defines the core product vision, target audience, promises, and no
 ---
 
 ## 🤝 The Product Promise
-* **Autonomous Operations**: The engine executes the complete lifecycle inside a single conversation: **Review → AutoFix safe issues → Ask for minimal approvals → Provision AWS infrastructure → Verify deployment → Stream log telemetry**.
-* **Clean & Transparent**: No hidden markups or proprietary hosting lock-in. Everything is deployed directly to the user's personal AWS account using wholesale-pricing architecture defaults.
+* **Autonomous Engineering Judgment**: The Advisor inspects the application, evaluates evidence from the knowledge base, and automatically determines the optimal production configuration — hosting tier, database, caching, security, monitoring, and region. Developers are never interrupted with infrastructure questions.
+* **Zero-Decision Deployment**: The entire lifecycle executes inside a single conversation: **Inspect → Review → AutoFix → Advisor Judgment → Production Plan → Provision → Deploy → Verify**. The only manual inputs required are AWS authentication, GitHub authentication, and custom domain DNS configuration.
+* **Clean & Transparent**: No hidden markups or proprietary hosting lock-in. Everything is deployed directly to the user's personal AWS account using wholesale-pricing architecture defaults. All decisions are explained with reasoning.
 * **AI-First Integration**: Designed from the ground up to be discovered, run, and maintained by IDE-based AI coding agents.
+
+---
+
+## 🧠 The Advisor
+
+The Advisor is MySystem's engineering judgment layer. It is the single authoritative component responsible for all production decisions.
+
+**Decision Types:**
+* **SAFE**: Infrastructure changes that always proceed automatically (Docker, CloudWatch, Budget Alerts, Region).
+* **RECOMMENDATION**: Engineering recommendations where multiple reasonable solutions exist (EC2 vs ECS, Redis, PgBouncer). Applied automatically with reasoning. Overridable later.
+* **BLOCKER**: Conditions that stop deployment (SQL injection, authentication failures, missing AWS credentials).
+
+**Golden Rule:** Never ask the developer a question if the answer can be determined from source code, configuration files, existing infrastructure, or production engineering best practices.
 
 ---
 
@@ -21,3 +35,4 @@ This document defines the core product vision, target audience, promises, and no
 * **No Multi-Cloud Support**: Support is strictly restricted to AWS. Do not introduce configurations for GCP, Azure, DigitalOcean, Hetzner, or generic providers.
 * **No Kubernetes**: Maintain lightweight, cost-effective EC2 monolith and ECS Fargate deployments. Do not introduce EKS or complex container orchestrators.
 * **No Complex Customization**: Do not implement extensive, customizable pipelines. Choose sensible, flat-fee AWS defaults (such as direct ALB routing without NAT Gateways for ECS) to keep costs minimal.
+* **No Interactive Configuration**: Do not prompt the developer with infrastructure questions. Inspect, decide, explain.

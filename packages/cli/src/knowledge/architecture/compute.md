@@ -54,3 +54,7 @@ Select the appropriate compute hosting layer on AWS. We weigh operational comple
 ## Approximate Monthly Cost
 - **EC2**: ~$3.20/month (for `t4g.nano` with 15GB SSD) or $0.00 (AWS Free Tier).
 - **ECS Fargate**: ~$15.00 - $25.00/month baseline (primarily driven by ALB and minimal CPU task allocation).
+
+## Confidence Rules
+- IF hasWebsockets OR queueLib THEN ecs-fargate CONFIDENCE 95
+- IF NOT hasWebsockets AND NOT queueLib THEN ec2 CONFIDENCE 95

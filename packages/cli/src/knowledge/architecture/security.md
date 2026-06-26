@@ -33,3 +33,7 @@ Medium to High (requires Route 53 DNS zone access, custom certificate validation
 
 ## Approximate Monthly Cost
 ~$1.00 - $8.00/month (WAF rules baseline charge + CloudFront usage data costs).
+
+## Confidence Rules
+- IF hasDatabase THEN true CONFIDENCE 85
+- IF NOT hasDatabase THEN false CONFIDENCE 75

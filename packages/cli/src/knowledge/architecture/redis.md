@@ -34,3 +34,7 @@ Medium (requires security groups, cluster replication, and VPC subnet placement)
 
 ## Approximate Monthly Cost
 ~$12.00 - $18.00/month baseline (for a single node `cache.t4g.micro` node).
+
+## Confidence Rules
+- IF hasWebsockets OR queueLib OR redisUrlConfigured THEN true CONFIDENCE 95
+- IF NOT hasWebsockets AND NOT queueLib AND NOT redisUrlConfigured THEN false CONFIDENCE 95

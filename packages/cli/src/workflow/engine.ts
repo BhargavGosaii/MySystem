@@ -1,6 +1,5 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as readline from 'readline/promises';
 import { inspectService } from '../services/inspect';
 import { reviewService, EngineeringFinding } from '../services/review';
 import { autoFixService } from '../services/autofix';
@@ -12,6 +11,8 @@ import { WorkflowContext, createInitialContext } from './state';
 import { PlannerConstraints } from '../planner/planner';
 import { readManifest, writeManifest, writeReviewHistory, writeDeploymentHistory } from './manifest';
 import { connectAwsAndGithubOidc } from '../utils/installer';
+import { ProductionDecision } from '../advisor';
+import { renderProductionPlan } from './renderer';
 
 export class WorkflowEngine {
   private context: WorkflowContext;
@@ -25,6 +26,7 @@ export class WorkflowEngine {
       'Inspecting Project',
       'Engineering Review',
       'Applying AutoFixes',
+      'Engineering Judgment',
       'Preparing AWS',
       'Deploying',
       'Verifying',
@@ -51,11 +53,6 @@ export class WorkflowEngine {
   }
 
   async run(): Promise<boolean> {
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-    });
-
     try {
       // Load manifest if it exists
       const manifest = readManifest(this.context.projectRoot);
@@ -112,36 +109,40 @@ export class WorkflowEngine {
       console.log('\n🔬 Re-running Engineering Review to Verify Fixes...');
       this.context.findings = await reviewService.review(this.context.characteristics, this.context.projectRoot);
 
-      // Auto-Detect & Infer Configuration Parameters
-      if (!isReusingManifest) {
-        const envRegion = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION;
-        this.context.awsRegion = envRegion || 'us-east-1';
-        const hasDb = !!(this.context.characteristics?.databaseLib || this.context.characteristics?.ormLib || this.context.characteristics?.databaseUrlConfigured);
-        this.context.needsDatabase = hasDb;
-        const hasScalingTriggers = !!(this.context.characteristics?.hasWebsockets || this.context.characteristics?.queueLib);
-        this.context.maxBudget = hasScalingTriggers ? 50.00 : 15.00;
-      }
+      // 5. Engineering Judgment — Advisor produces all decisions autonomously
+      this.context.currentState = 'DECIDING';
+      this.renderProgress(3);
+
+      // The Advisor runs inside planningService.plan() and produces the ArchitectureReview
+      // with decisions[]. We call it here to get the review for rendering.
+      const { runAdvisor } = await import('../advisor');
+      const architectureReview = await runAdvisor(this.context.characteristics);
+
+      // Extract decisions from the Advisor
+      const hostingDecision = architectureReview.decisions.find(d => d.component === 'hosting');
+      const dbDecision = architectureReview.decisions.find(d => d.component === 'database');
+      const regionDecision = architectureReview.decisions.find(d => d.component === 'region');
+      const domainDecision = architectureReview.decisions.find(d => d.component === 'domain');
+
+      // Apply Advisor decisions to workflow context
+      this.context.awsRegion = isReusingManifest ? this.context.awsRegion : (regionDecision?.value || 'us-east-1');
+      this.context.needsDatabase = dbDecision?.value !== 'none';
+      const isProdTier = hostingDecision?.value === 'ecs-fargate';
+      this.context.maxBudget = architectureReview.totalMonthlyCost;
 
       const securityLevel = this.context.needsDatabase ? 'waf-shielded' : 'basic';
-      const domainName = process.env.MYSYSTEM_DOMAIN || '';
-      const billingEmail = '';
-      const isProdTier = this.context.maxBudget > 30.00;
+      const domainName = domainDecision?.value !== 'none' ? (domainDecision?.value || '') : '';
 
-      // 5. Present Production Review Summary
-      const requiresApproval = this.context.findings.filter(f => f.action === 'APPROVAL');
-      const activeBlockers = this.context.findings.filter(f => f.blocksDeployment && !f.fixed);
-
-      console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('Production Review Complete\n');
-      console.log(`Automatically Fixed         ${autofixedCount}`);
-      console.log(`Requires Approval           ${requiresApproval.length}`);
-      console.log(`Deployment Blockers         ${activeBlockers.length}`);
-      console.log(`Estimated AWS Monthly Cost   $${isProdTier ? '50.00' : '15.00'}`);
-      console.log('Estimated Deployment Time    6 minutes');
-      console.log(`Deployment Strategy          ${isProdTier ? 'ECS Fargate' : 'EC2'}`);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      // Render Production Plan
+      renderProductionPlan(
+        this.context.characteristics.framework,
+        architectureReview.decisions,
+        architectureReview.totalMonthlyCost,
+        architectureReview.deploymentConfidence
+      );
 
       // Write review history to manifest history
+      const activeBlockers = this.context.findings.filter(f => f.blocksDeployment && !f.fixed);
       const reviewSession = {
         timestamp: new Date().toISOString(),
         framework: this.context.characteristics.framework,
@@ -152,49 +153,29 @@ export class WorkflowEngine {
       };
       writeReviewHistory(this.context.projectRoot, reviewSession);
 
-      // 6. Ask for Remaining Approvals
-      this.context.currentState = 'AWAITING_APPROVALS';
-      
-      // Prompt for remaining blockers (such as SQL Injection)
-      const sqliBlocker = this.context.findings.find(f => f.id === 'sec-sql-injection');
-      if (sqliBlocker) {
-        console.log(`\n\x1b[33m⚠️  SQL Injection smell detected. You must confirm parameter sanitization.\x1b[0m`);
-        const approveSqli = await rl.question('Do you approve parameter sanitization and ORM safety compliance? (y/n) [y]: ');
-        if (approveSqli.trim().toLowerCase() !== 'n') {
-          sqliBlocker.fixed = true;
-          console.log('   ✅ Approved.');
-        } else {
-          console.log('   🛑 Blocked. Deployment cannot proceed with raw injection exposure.');
-          rl.close();
-          return false;
-        }
-      }
-
-      // Check if any deployment blockers remain unresolved
+      // 6. Check for BLOCKER decisions and unresolved deployment blockers
+      const blockerDecisions = architectureReview.decisions.filter(d => d.decisionType === 'BLOCKER');
       const unresolvedBlockers = this.context.findings.filter(f => f.blocksDeployment && !f.fixed);
-      if (unresolvedBlockers.length > 0) {
-        console.log('\n\x1b[31m❌ Cannot deploy. The following unresolved blockers remain:\x1b[0m');
-        unresolvedBlockers.forEach(b => console.log(`   - ${b.title}`));
-        rl.close();
+
+      if (blockerDecisions.length > 0 || unresolvedBlockers.length > 0) {
+        console.log('\n\x1b[31m🛑 Deployment blocked:\x1b[0m');
+        blockerDecisions.forEach(b => console.log(`   - \x1b[33m${b.component}\x1b[0m: ${b.reasoning.join(' ')}`));
+        unresolvedBlockers.forEach(f => console.log(`   - \x1b[33m${f.title}\x1b[0m: ${f.description}`));
+        console.log('\n   Resolve the above issues and re-run MySystem.');
         return false;
       }
 
-      // Ask for final confirmation to proceed to deployment
-      const continueDeploy = await rl.question('\nContinue to deployment? (y/n) [y]: ');
-      if (continueDeploy.trim().toLowerCase() === 'n') {
-        console.log('🛑 Deployment aborted by user.');
-        rl.close();
-        return false;
-      }
+      // No blockers — continue automatically. No prompt needed.
+      console.log('\x1b[32m✅ No deployment blockers. Proceeding automatically.\x1b[0m');
 
       // 7. Prepare AWS Environment
       this.context.currentState = 'PLANNING';
-      this.renderProgress(3);
+      this.renderProgress(4);
 
       console.log('\n💰 Preparing Cost-Optimized AWS Infrastructure plan...');
       const constraints: PlannerConstraints = {
         maxMonthlyBudget: this.context.maxBudget,
-        availabilityTarget: this.context.maxBudget > 30 ? 'multi-zone' : 'single',
+        availabilityTarget: isProdTier ? 'multi-zone' : 'single',
         securityLevel,
         performanceLevel: 'standard',
         needsDatabase: this.context.needsDatabase
@@ -205,7 +186,7 @@ export class WorkflowEngine {
         constraints,
         this.context.awsRegion,
         domainName,
-        billingEmail
+        ''
       );
 
       // Authenticate and provision AWS/GitHub connection
@@ -232,14 +213,14 @@ export class WorkflowEngine {
 
       // 9. Deploy
       this.context.currentState = 'DEPLOYING';
-      this.renderProgress(4);
+      this.renderProgress(5);
       console.log('\n🚀 Initiating deployment to AWS...');
       console.log('   ✅ Application code built and pushed to AWS ECR.');
       console.log('   ✅ Terraform provisioning plan validated.');
 
       // 10. Verify Deployment
       this.context.currentState = 'VERIFYING';
-      this.renderProgress(5);
+      this.renderProgress(6);
       console.log('\n🛡️  Verifying generated production assets...');
       const verification = await verificationService.verify(this.context.projectRoot);
       if (!verification.success) {
@@ -249,19 +230,18 @@ export class WorkflowEngine {
 
       // 11. Produce Production Summary
       this.context.currentState = 'COMPLETED';
-      this.renderProgress(6);
+      this.renderProgress(7);
 
-      const isProd = this.context.plan.config.hosting === 'ecs-fargate';
       const summary = {
-        applicationUrl: isProd ? 'https://app.' + (domainName || 'mysystem-deployment.amazonaws.com') : 'http://' + (domainName || 'mysystem-deployment.amazonaws.com'),
+        applicationUrl: isProdTier ? 'https://app.' + (domainName || 'mysystem-deployment.amazonaws.com') : 'http://' + (domainName || 'mysystem-deployment.amazonaws.com'),
         healthStatus: 'Healthy',
         deploymentStatus: 'Asset Scaffolding Verification Complete',
-        infrastructureType: isProd ? 'ECS Fargate' : 'EC2 Monolith',
+        infrastructureType: isProdTier ? 'ECS Fargate' : 'EC2 Monolith',
         httpsStatus: domainName ? 'Active (SSL/TLS)' : 'Disabled (HTTP Direct)',
         cloudwatchStatus: 'Active',
         monitoringStatus: 'Active via Sentry DSN',
-        backupStatus: isProd ? 'Daily Automatic RDS Snapshots Enabled' : 'Local Docker Volume Backups Enabled',
-        estimatedCost: `$${this.context.maxBudget.toFixed(2)}/month`,
+        backupStatus: isProdTier ? 'Daily Automatic RDS Snapshots Enabled' : 'Local Docker Volume Backups Enabled',
+        estimatedCost: `$${architectureReview.totalMonthlyCost.toFixed(2)}/month`,
         deploymentTime: '6 minutes',
         containerStatus: 'Running (Autorestart: always)'
       };
@@ -281,7 +261,7 @@ export class WorkflowEngine {
       console.log(`Deployment Time:     ${summary.deploymentTime}`);
       console.log(`Container Status:    ${summary.containerStatus}`);
       console.log('\n🧠 FUTURE UPGRADE SUGGESTIONS:');
-      if (isProd) {
+      if (isProdTier) {
         console.log('  1. Scale Compute (ECS Fargate -> Multi-AZ Auto-scaling): Configure multi-zone task deployment limits if latency spikes occur during peak traffic.');
         console.log('  2. Connection Pooling (Enable PgBouncer): Add AWS RDS Proxy when concurrent database client connections exceed 80.');
       } else {
@@ -296,11 +276,11 @@ export class WorkflowEngine {
         version: 1,
         framework: this.context.characteristics.framework,
         provider: "aws",
-        deployment: isProd ? 'ecs-fargate' : 'ec2',
+        deployment: isProdTier ? 'ecs-fargate' : 'ec2',
         lastReview: new Date().toISOString(),
         lastDeployment: new Date().toISOString(),
         workflowVersion: 1,
-        deploymentType: isProd ? 'production' : 'hobbyist',
+        deploymentType: isProdTier ? 'production' : 'hobbyist',
         awsRegion: this.context.awsRegion,
         healthStatus: 'Healthy',
         currentInfrastructure: {
@@ -316,15 +296,14 @@ export class WorkflowEngine {
       // Save deployment history
       const deploymentSession = {
         timestamp: new Date().toISOString(),
-        deploymentType: isProd ? 'production' : 'hobbyist',
+        deploymentType: isProdTier ? 'production' : 'hobbyist',
         status: 'SUCCESS',
         duration: '6 minutes',
-        estimatedCost: this.context.maxBudget,
+        estimatedCost: architectureReview.totalMonthlyCost,
         hosting: this.context.plan.config.hosting
       };
       writeDeploymentHistory(this.context.projectRoot, deploymentSession);
 
-      rl.close();
       return true;
 
     } catch (err: any) {
@@ -373,9 +352,7 @@ export class WorkflowEngine {
       writeDeploymentHistory(this.context.projectRoot, deploymentSession);
 
       this.context.currentState = 'FAILED';
-      rl.close();
       return false;
     }
   }
 }
-

@@ -31,3 +31,7 @@ Medium (requires configuring database credentials in AWS Secrets Manager, IAM ac
 
 ## Approximate Monthly Cost
 ~$15.00/month baseline (varies based on the underlying RDS database instance vCPU sizing).
+
+## Confidence Rules
+- IF framework=nextjs AND hasDatabase THEN true CONFIDENCE 85
+- IF NOT framework=nextjs THEN false CONFIDENCE 90

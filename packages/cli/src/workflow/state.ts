@@ -7,7 +7,7 @@ export type WorkflowState =
   | 'INSPECTING' 
   | 'REVIEWING' 
   | 'FIXING' 
-  | 'AWAITING_APPROVALS' 
+  | 'DECIDING' 
   | 'PLANNING' 
   | 'PREPARING_ASSETS' 
   | 'DEPLOYING' 

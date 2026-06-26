@@ -18,7 +18,7 @@ MySystem is structured into modular components within a TypeScript workspace:
 
 ---
 
-## 2. The 11-Step Workflow Engine
+## 2. The Workflow Engine
 
 The `WorkflowEngine` is the sole coordinator of deployment lifecycle operations. No service invokes another service directly; all state and control flow are managed by the engine:
 
@@ -26,13 +26,14 @@ The `WorkflowEngine` is the sole coordinator of deployment lifecycle operations.
 2. **Engineering Review**: Executes deep security, database configuration, and telemetry scans.
 3. **Automatically Apply Safe Infrastructure Fixes**: Generates missing Dockerfiles, health routes, and GitHub Actions pipelines automatically.
 4. **Re-run Engineering Review**: Re-scans the repository to verify that auto-fixes resolved the target findings.
-5. **Present Production Review Summary**: Compiles a review dashboard containing estimated AWS monthly costs, target strategies, and action items.
-6. **Ask for Remaining Approvals**: Prompts the developer to approve high-risk code changes (such as database query rewrites or SQL injection safety).
-7. **Prepare AWS Environment**: Ensures AWS CLI and GitHub CLI tools are installed and logged in, then deploys the OIDC credentials stack.
-8. **Configure GitHub Actions**: Scaffolds standard Terraform configuration files (`/terraform`) and workflow templates.
-9. **Deploy**: Builds, tags, and pushes Docker images to ECR, and deploys infrastructure passwordless via OIDC.
-10. **Verify Deployment**: Tests live endpoints and files to verify successful provisioning.
-11. **Generate Production Summary**: Produces a human-readable summary of live application metadata and lists future optimization upgrade suggestions.
+5. **Advisor Engineering Judgment**: The Advisor evaluates all project characteristics against the knowledge base to autonomously determine hosting tier, database, caching, security, monitoring, and region. Decisions are rendered as a Production Plan table. If any BLOCKER decisions exist, the workflow halts. Otherwise, it continues automatically with zero interactive prompts.
+6. **Prepare AWS Environment**: Ensures AWS CLI and GitHub CLI tools are installed and logged in, then deploys the OIDC credentials stack.
+7. **Configure GitHub Actions**: Scaffolds standard Terraform configuration files (`/terraform`) and workflow templates.
+8. **Deploy**: Builds, tags, and pushes Docker images to ECR, and deploys infrastructure passwordless via OIDC.
+9. **Verify Deployment**: Tests live endpoints and files to verify successful provisioning.
+10. **Generate Production Summary**: Produces a human-readable summary of live application metadata and lists future optimization upgrade suggestions.
+
+The workflow requires **zero infrastructure knowledge** from the developer. The only manual inputs are AWS authentication, GitHub authentication, and custom domain DNS configuration.
 
 ---
 
@@ -56,3 +57,43 @@ Auditing checks are modularized under `packages/cli/src/services/review/`:
 * **Security Analyzer**: Scans for OWASP Top 10 vulnerabilities, raw SQL injections, and hardcoded credentials.
 * **Database Analyzer**: Validates connection pooling (PgBouncer), database structures, and database migration safety.
 * **Observability Analyzer**: Verifies health routes, structured logging (`pino`), and unhandled exception trackers (`sentry`).
+
+---
+
+## 5. Advisor: Engineering Judgment Layer
+
+The Advisor (`packages/cli/src/advisor/`) is MySystem's single authoritative reasoning component. It is responsible for reading project facts, evaluating engineering knowledge, and producing all production decisions.
+
+### Architecture Flow
+
+```
+Inspectors (project facts) → Advisor (judgment) → Production Plan (rendered) → Planner (constraints) → Deploy
+```
+
+### Decision Types
+
+| Type | Behavior | Examples |
+|------|----------|----------|
+| **SAFE** | Applied automatically. No explanation needed. | Dockerfile, CloudWatch, Budget Alerts, Region |
+| **RECOMMENDATION** | Applied automatically. Reasoning is displayed. Override possible later. | EC2 vs ECS Fargate, Redis, PgBouncer, WAF |
+| **BLOCKER** | Halts deployment. Explains the issue. Requires resolution. | SQL injection, auth failures, Terraform errors |
+
+### Knowledge-Driven Decisions
+
+Decision logic is not hardcoded in TypeScript. Instead, each infrastructure component has a Markdown knowledge file under `packages/cli/src/knowledge/architecture/` containing:
+
+* **Purpose**: What the component does.
+* **When to Use / When NOT to Use**: Engineering guidance.
+* **Strong Indicators**: Package names and patterns that signal need.
+* **Trade-offs**: Pros, cons, and alternatives.
+* **Confidence Rules**: Structured IF/THEN rules that the interpreter parses to produce decisions.
+
+Adding support for new technologies primarily involves adding or updating knowledge documents, not modifying decision logic.
+
+### Optimization Pass
+
+After all decisions are produced, the Advisor runs a cost optimization sweep:
+* Removes Redis if no queue, WebSocket, or session indicators exist.
+* Removes PgBouncer if the hosting tier is EC2 (single-instance connection pool is sufficient).
+* Removes WAF if no database routes exist to protect.
+* Selects the smallest viable EC2 instance tier based on framework footprint.
