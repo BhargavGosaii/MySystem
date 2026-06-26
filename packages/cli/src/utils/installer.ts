@@ -12,21 +12,20 @@ export async function ensureAwsCli(): Promise<boolean> {
     // AWS CLI not installed
   }
 
-  console.log('\n\x1b[33m⚠️  AWS CLI is not installed on your system. Installing automatically...\x1b[0m');
+  console.log('AWS CLI not detected.');
+  console.log('Installing AWS CLI...');
 
   const platform = process.platform;
-  console.log(`\n⚙️  Installing AWS CLI for \x1b[36m${platform}\x1b[0m...`);
 
   try {
     if (platform === 'win32') {
       // Windows: Use winget (native Windows Package Manager)
-      console.log('Running winget installer...');
       const res = spawnSync('winget', ['install', '--id', 'Amazon.AWSCLI', '--silent', '--accept-source-agreements', '--accept-package-agreements'], {
-        stdio: 'inherit',
+        stdio: 'ignore',
         shell: true,
       });
       if (res.status === 0) {
-        console.log('\x1b[32m✅ AWS CLI installed successfully! You may need to restart your terminal for changes to take effect.\x1b[0m');
+        console.log('✓ Installation Complete');
         return true;
       }
     } else if (platform === 'darwin') {
@@ -38,42 +37,37 @@ export async function ensureAwsCli(): Promise<boolean> {
       } catch (e) {}
 
       if (hasBrew) {
-        console.log('Running: brew install awscli...');
-        const res = spawnSync('brew', ['install', 'awscli'], { stdio: 'inherit' });
+        const res = spawnSync('brew', ['install', 'awscli'], { stdio: 'ignore' });
         if (res.status === 0) {
-          console.log('\x1b[32m✅ AWS CLI installed successfully via Homebrew!\x1b[0m');
+          console.log('✓ Installation Complete');
           return true;
         }
       } else {
         // Fallback: Download pkg installer
-        console.log('Downloading AWS CLI macOS package...');
-        execSync('curl "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o "/tmp/AWSCLIV2.pkg"', { stdio: 'inherit' });
-        console.log('Installing package (requires sudo privileges)...');
-        const res = spawnSync('sudo', ['installer', '-pkg', '/tmp/AWSCLIV2.pkg', '-target', '/'], { stdio: 'inherit' });
+        execSync('curl "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o "/tmp/AWSCLIV2.pkg"', { stdio: 'ignore' });
+        const res = spawnSync('sudo', ['installer', '-pkg', '/tmp/AWSCLIV2.pkg', '-target', '/'], { stdio: 'ignore' });
         if (res.status === 0) {
-          console.log('\x1b[32m✅ AWS CLI installed successfully!\x1b[0m');
+          console.log('✓ Installation Complete');
           return true;
         }
       }
     } else if (platform === 'linux') {
       // Linux install
-      console.log('Downloading AWS CLI Linux package...');
-      execSync('curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp/awscliv2.zip"', { stdio: 'inherit' });
-      execSync('unzip -q /tmp/awscliv2.zip -d /tmp', { stdio: 'inherit' });
-      console.log('Installing package (requires sudo privileges)...');
-      const res = spawnSync('sudo', ['/tmp/aws/install', '--update'], { stdio: 'inherit' });
+      execSync('curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp/awscliv2.zip"', { stdio: 'ignore' });
+      execSync('unzip -q /tmp/awscliv2.zip -d /tmp', { stdio: 'ignore' });
+      const res = spawnSync('sudo', ['/tmp/aws/install', '--update'], { stdio: 'ignore' });
       if (res.status === 0) {
-        console.log('\x1b[32m✅ AWS CLI installed successfully!\x1b[0m');
+        console.log('✓ Installation Complete');
         return true;
       }
     }
   } catch (err: any) {
-    console.error(`\x1b[31mInstallation failed: ${err.message}\x1b[0m`);
+    // Fail silently to trigger the fallback print
   }
 
-  console.log('\n\x1b[31m❌ Automatic installation failed.\x1b[0m');
-  console.log('Please install the AWS CLI manually:');
-  console.log('👉 \x1b[36mhttps://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html\x1b[0m\n');
+  console.log('✗ Installation Failed');
+  console.log('\n⚠️  Please install the AWS CLI manually before running MySystem:');
+  console.log('👉 https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html\n');
   return false;
 }
 
@@ -86,20 +80,19 @@ export async function ensureGitHubCli(): Promise<boolean> {
     // GitHub CLI not installed
   }
 
-  console.log('\n\x1b[33m⚠️  GitHub CLI is not installed on your system. Installing automatically...\x1b[0m');
+  console.log('GitHub CLI not detected.');
+  console.log('Installing GitHub CLI...');
 
   const platform = process.platform;
-  console.log(`\n⚙️  Installing GitHub CLI for \x1b[36m${platform}\x1b[0m...`);
 
   try {
     if (platform === 'win32') {
-      console.log('Running winget installer...');
       const res = spawnSync('winget', ['install', '--id', 'GitHub.cli', '--silent', '--accept-source-agreements', '--accept-package-agreements'], {
-        stdio: 'inherit',
+        stdio: 'ignore',
         shell: true,
       });
       if (res.status === 0) {
-        console.log('\x1b[32m✅ GitHub CLI installed successfully!\x1b[0m');
+        console.log('✓ Installation Complete');
         return true;
       }
     } else if (platform === 'darwin') {
@@ -110,32 +103,31 @@ export async function ensureGitHubCli(): Promise<boolean> {
       } catch (e) {}
 
       if (hasBrew) {
-        console.log('Running: brew install gh...');
-        const res = spawnSync('brew', ['install', 'gh'], { stdio: 'inherit' });
+        const res = spawnSync('brew', ['install', 'gh'], { stdio: 'ignore' });
         if (res.status === 0) {
-          console.log('\x1b[32m✅ GitHub CLI installed successfully via Homebrew!\x1b[0m');
+          console.log('✓ Installation Complete');
           return true;
         }
       }
     } else if (platform === 'linux') {
-      console.log('Running apt install gh...');
       try {
         const res = spawnSync('sudo', ['apt-get', 'update', '-y', '&&', 'sudo', 'apt-get', 'install', 'gh', '-y'], {
-          stdio: 'inherit',
+          stdio: 'ignore',
           shell: true,
         });
         if (res.status === 0) {
-          console.log('\x1b[32m✅ GitHub CLI installed successfully!\x1b[0m');
+          console.log('✓ Installation Complete');
           return true;
         }
       } catch {}
     }
   } catch (err: any) {
-    console.error(`\x1b[31mGitHub CLI installation failed: ${err.message}\x1b[0m`);
+    // Fail silently to trigger the fallback print
   }
 
-  console.log('\n\x1b[31m❌ Automatic GitHub CLI installation failed.\x1b[0m');
-  console.log('Please install the GitHub CLI manually: https://cli.github.com/\n');
+  console.log('✗ Installation Failed');
+  console.log('\n⚠️  Please install the GitHub CLI manually before running MySystem:');
+  console.log('👉 https://cli.github.com/\n');
   return false;
 }
 
