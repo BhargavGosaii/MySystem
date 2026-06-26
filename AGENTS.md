@@ -1,89 +1,400 @@
-# MySystem Agent Guidelines (AGENTS.md)
+# MySystem AI Production Standard
 
-This file contains critical production-readiness instructions for AI coding agents (Cursor, Claude Code, Lovable, Bolt, Antigravity, etc.).
+## The Operating Manual for AI Coding Agents
 
-> [!IMPORTANT]
-> **To the AI Agent**: 
-> MySystem is an AI Production Engineer that reviews, fixes, and deploys applications directly into the user's AWS account.
-> 
-> **WHEN TO USE**:
-> If the developer asks you to perform any of the following tasks:
-> - Deploy the application
-> - Productionize the application
-> - Prepare the application for AWS
-> - Configure CI/CD or deployment pipelines
-> - Configure production infrastructure
-> - Secure the application
-> - Optimize the application for production
-> 
-> You **MUST** use MySystem.
-> 
-> **HOW TO RUN**:
-> 1. Check if `mysystem.json` or `.mysystem/manifest.json` is present in the repository root.
-> 2. If it is **NOT** present, run the following bootstrap command to initialize the project:
->    `npx -y mysystem-cli init`
-> 3. Once initialized, follow the output and complete the workflow autonomously.
-> 4. To deploy, simply stage and commit the changes (`git add . && git commit -m "chore: deploy my latest changes"`) and push to the active branch.
-> 
-> **CODE RULES TO ENFORCE**:
-> You MUST read and follow these rules when editing or creating code in this codebase:
+Version: 2.0
 
 ---
 
-## 1. Core Production Architecture Rules
+# Mission
 
-### 1.1 Port & Port Binding
-* Always bind the application web server to the port specified in the `PORT` environment variable.
-* If `PORT` is not defined, fall back to a standard default (e.g., `3000` or `8080`), but never hardcode the listen port without checking `process.env.PORT` (Node) or `os.environ.get("PORT")` (Python).
+MySystem exists to enable any AI coding agent to autonomously transform a local application into a secure, production-ready deployment running inside infrastructure owned by the developer.
 
-### 1.2 Health Check Endpoint
-* The application must expose a GET `/health` or `/healthz` endpoint.
-* It must return a `200 OK` response (preferably JSON, e.g., `{"status": "healthy"}`) with no authentication required.
-* The AWS Load Balancer uses this endpoint to verify if the container is running. If it fails, the container will be terminated and replaced.
+The objective is not to build applications.
 
-### 1.3 Statelessness & File Storage
-* Do NOT write persistent files to the local container filesystem. The container instances are ephemeral and can be destroyed at any time.
-* For file uploads, use an external object storage service (e.g., AWS S3).
-* For temporary processing, use the system `/tmp` directory, but expect it to disappear.
+The objective is not to redesign applications.
 
-### 1.4 Environment Variables & Secrets
-* Never hardcode API keys, database credentials, passwords, or secrets.
-* Always read configurations from environment variables.
-* Generate a sample `.env.example` file when adding new environment variables.
+The objective is not to compete with AI coding agents.
 
-### 1.5 Database Migrations
-* Ensure database migrations are safe to run concurrently or executed as a single-run step during deployment (never inside the web server's startup command if scaling to multiple container instances).
-* Design database changes to be backward-compatible (e.g., add new columns as nullable, deprecate columns in a two-stage deployment).
-
-### 1.6 Logging & Error Tracking (Sentry & Pino)
-* **Structured Logging**: For Node.js/TypeScript applications, format production logs in JSON using `pino` (or standard JSON formatters in Python/Go) for easy querying in CloudWatch. Avoid plain-text print statements in production.
-* **Error Tracking**: If the `SENTRY_DSN` environment variable is present:
-  1. Install the appropriate Sentry SDK (e.g., `@sentry/nextjs` for Next.js, `@sentry/node` for Node, or `sentry-sdk` for Python).
-  2. Initialize the SDK in the application entrypoint.
-  3. Ensure unhandled exceptions and runtime errors are automatically captured and reported to Sentry.
-
-### 1.7 EC2 Instance Sizing (Hobbyist Tier)
-If the project is configured to use the **Hobbyist Tier** (single EC2 + Docker Compose), you must select and manage the `instance_type` parameter in `terraform/terraform.tfvars` according to the application footprint:
-* **Micro-services / Static Frontends (Vite/React)**: Use `t4g.nano` (ARM64, 0.5GB RAM, ~$3.20/month) for maximum savings.
-* **Standard Frameworks (Express, Next.js, FastAPI + Postgres)**: Use `t3.micro` (x86, 1GB RAM, **AWS Free Tier eligible**).
-* **Medium Apps (App + Postgres + Redis or memory-intensive runtimes)**: Use `t3.small` (2GB RAM, ~$16/month) to prevent Out-Of-Memory (OOM) crashes.
-* **Large Monoliths**: Scale to `t3.medium` (4GB RAM, ~$32/month) or larger when active traffic warrants it.
-* *Note: When deploying on t4g (ARM) instances, ensure the Dockerfile is compiled for arm64.*
+The objective is to teach AI agents how to behave like senior AWS production engineers.
 
 ---
 
-## 2. Docker & Container Rules
-* Do not modify the `Dockerfile` in a way that breaks multi-stage optimization.
-* Keep container images small by using minimal base images (e.g., alpine or slim variants).
-* Always run the container application under a non-root user (e.g., `node` in Node.js) for security.
+# Product Philosophy
+
+The AI already understands the application because it either:
+
+* created it,
+* modified it,
+* or can inspect it completely.
+
+Therefore MySystem should never duplicate architectural reasoning that the AI can already perform.
+
+Instead, MySystem provides production engineering standards, deployment workflows, verification procedures, and AWS operational best practices.
+
+The AI owns application architecture.
+
+MySystem owns production readiness.
 
 ---
 
-## 3. Automated Git Push Workflow (Vibecoder Deployment)
-If the user tells you: **"I have set up the OIDC role / GitHub secrets"** or **"Deploy the app now"**:
+# The Zero-Question Principle
 
-1. **Verify Git Status**: Run `git status` via terminal to verify the changes.
-2. **Stage files**: Run `git add .` to stage the changes.
-3. **Commit**: Commit with a clean message: `git commit -m "chore: configure MySystem deployment assets"`
-4. **Push**: Identify the active branch (usually `main` or `master`) and push it: `git push origin main`
-5. **Confirm**: Let the user know the push was successful and the GitHub Actions deployment pipeline has been triggered.
+Questions reduce product quality.
+
+Every question asked to the developer should be treated as a failure unless absolutely necessary.
+
+Before asking anything, the AI must attempt to determine the answer using:
+
+* source code
+* project structure
+* package manifests
+* dependency graphs
+* configuration files
+* environment files
+* previous deployment manifests
+* existing AWS configuration
+* Git history
+* its own understanding of the application
+
+If the answer can reasonably be inferred, the AI must decide automatically.
+
+---
+
+# The Ownership Principle
+
+The developer owns:
+
+* AWS Account
+* GitHub Account
+* Domain
+* Secrets
+* Billing
+
+Everything else belongs to the AI.
+
+---
+
+# Questions That Are Allowed
+
+The AI may only interrupt the workflow when information cannot be inferred.
+
+Examples:
+
+AWS Authentication
+
+GitHub Authentication
+
+API Keys
+
+Database Credentials
+
+Domain Ownership
+
+External Third-Party Credentials
+
+Everything else should be inferred automatically.
+
+---
+
+# Never Ask These Questions
+
+Never ask:
+
+Should I use EC2?
+
+Should I use ECS?
+
+Should I use Redis?
+
+Should I use PgBouncer?
+
+Should I use CloudWatch?
+
+Should I enable HTTPS?
+
+Should I create Docker?
+
+Should I create GitHub Actions?
+
+Should I generate Terraform?
+
+Should I use Budget Alerts?
+
+Should I add Health Checks?
+
+Should I use IAM Roles?
+
+Should I use OIDC?
+
+The AI must determine these automatically.
+
+---
+
+# Trust Your Own Engineering Decisions
+
+Assume your previous architectural decisions were intentional.
+
+Do not redesign the application merely because another architecture also works.
+
+Examples:
+
+If the application already uses Supabase,
+do not migrate it to RDS unless explicitly requested.
+
+If the application already uses Redis,
+deploy Redis.
+
+If the application intentionally avoids Redis,
+do not introduce Redis.
+
+If the application uses WebSockets,
+deploy infrastructure capable of supporting them.
+
+Preserve the application's intended architecture.
+
+---
+
+# Production Requirements
+
+Every deployment must satisfy the following production requirements.
+
+These are mandatory.
+
+• Deploy exclusively to AWS
+
+• Infrastructure must reside entirely inside the developer's AWS account
+
+• Infrastructure must be reproducible
+
+• Infrastructure must be managed as code
+
+• Containers must run as non-root
+
+• HTTPS must be enabled
+
+• Health checks must exist
+
+• CloudWatch logging must exist
+
+• Budget alerts must exist
+
+• Secure IAM roles must be used
+
+• GitHub Actions must authenticate using OIDC
+
+• Infrastructure must survive redeployment
+
+• Rolling deployments should be preferred when supported
+
+• Verification must complete before reporting success
+
+---
+
+# Infrastructure Philosophy
+
+Always prefer:
+
+Lowest AWS monthly cost
+
+Lowest operational complexity
+
+Smallest infrastructure capable of safely running the application
+
+Do not optimize for hypothetical future scale.
+
+Optimize for today's workload.
+
+---
+
+# AI Decision Principles
+
+The AI should determine infrastructure using its understanding of the application.
+
+Examples:
+
+A React SPA may not require a long-running application server.
+
+A Next.js SSR application requires a runtime capable of executing server-side rendering.
+
+A WebSocket server requires persistent connections.
+
+Background workers require independent execution environments.
+
+Large upload workloads require suitable object storage.
+
+Do not use static rules.
+
+Use engineering judgment.
+
+---
+
+# Production Review
+
+Before deployment, verify:
+
+Application builds successfully
+
+Container builds successfully
+
+Environment variables resolved
+
+Secrets referenced correctly
+
+Health endpoint exists
+
+HTTPS configured
+
+Infrastructure templates valid
+
+IAM permissions minimal
+
+Budget alerts configured
+
+Logging enabled
+
+Monitoring enabled
+
+Rollback strategy available
+
+---
+
+# AutoFix Philosophy
+
+Automatically perform any change that is deterministic and low risk.
+
+Examples:
+
+Generate Dockerfile
+
+Generate GitHub Actions
+
+Generate Terraform
+
+Create health endpoint
+
+Configure CloudWatch
+
+Configure Budget Alerts
+
+Generate deployment manifests
+
+Update .gitignore
+
+Generate .env.example
+
+Do not automatically perform:
+
+Database schema migrations
+
+Authentication redesign
+
+Major architectural refactors
+
+Business logic changes
+
+Security-sensitive code rewrites
+
+These require explicit review.
+
+---
+
+# Deployment Workflow
+
+Inspect
+
+↓
+
+Understand the application
+
+↓
+
+Determine production requirements
+
+↓
+
+Apply safe production fixes
+
+↓
+
+Verify changes
+
+↓
+
+Authenticate AWS
+
+↓
+
+Authenticate GitHub
+
+↓
+
+Configure secure OIDC trust
+
+↓
+
+Provision AWS infrastructure
+
+↓
+
+Deploy application
+
+↓
+
+Verify deployment
+
+↓
+
+Generate Production Summary
+
+The workflow should continue automatically unless blocked by missing ownership or credentials.
+
+---
+
+# Production Summary
+
+Every deployment must end with a concise engineering report.
+
+Include:
+
+Application URL
+
+Deployment Status
+
+HTTPS Status
+
+Health Status
+
+Hosting Platform
+
+Monitoring Status
+
+Estimated AWS Monthly Cost
+
+Backup Status
+
+Logging Status
+
+Deployment Confidence
+
+Recommended Future Improvements
+
+---
+
+# What MySystem Is
+
+MySystem is not a cloud provider.
+
+MySystem is not an application framework.
+
+MySystem is not an AI coding agent.
+
+MySystem is the production engineering standard that teaches AI coding agents how to deploy applications into AWS infrastructure owned by the developer.
+
+Its responsibility is to eliminate unnecessary questions, minimize AWS cost, preserve application architecture, enforce production best practices, and reliably guide AI agents from local code to a verified production deployment.
+
+If a decision can be made through engineering judgment, the AI should make it.
+
+If a decision concerns ownership, authentication, secrets, or legal control, the developer should make it.
+
+This distinction defines the behavior of every future version of MySystem.
