@@ -10,7 +10,7 @@ AI coding tools like Cursor, Claude Code, and Lovable are excellent at building 
 
 ---
 
-## 🤖 The Developer Journey
+## The Developer Journey
 
 ```mermaid
 graph TD
@@ -25,21 +25,21 @@ graph TD
 
 ---
 
-## ⚖️ Without vs. With MySystem
+## Without vs. With MySystem
 
 ### Without MySystem
 ```
-Developer ➔ AI builds app ➔ Complex cloud questions ➔ Manual AWS Console setup ➔ Writing custom Terraform ➔ Debugging ports & healthchecks ➔ Unsecured access keys ➔ Fragile deployments 🛑
+Developer ➔ AI builds app ➔ Complex cloud questions ➔ Manual AWS Console setup ➔ Writing custom Terraform ➔ Debugging ports & healthchecks ➔ Unsecured access keys ➔ Fragile deployments
 ```
 
 ### With MySystem
 ```
-Developer ➔ AI builds app ➔ AI follows MySystem Standard ➔ Git Push ➔ Automated AWS OIDC Deployment ➔ Secure, cost-optimized live application 🎉
+Developer ➔ AI builds app ➔ AI follows MySystem Standard ➔ Git Push ➔ Automated AWS OIDC Deployment ➔ Secure, cost-optimized live application
 ```
 
 ---
 
-## 🚀 Why MySystem?
+## Why MySystem?
 
 AI agents can generate server code in seconds, but deploying it correctly requires making dozens of operations decisions: *Which instance type is cheapest? How do I configure SSL? Where do I store secrets? How do I hook up CI/CD without hardcoding AWS passwords?*
 
@@ -51,7 +51,7 @@ MySystem establishes a clear standard to automate these decisions:
 
 ---
 
-## 🤝 Zero Decision Deployment
+## Zero Decision Deployment
 
 Deploy AI-built applications into your own AWS account with almost no manual input.
 
@@ -65,7 +65,7 @@ Everything else is inferred or decided automatically by the AI agent following t
 
 ---
 
-## 📦 Installation & CLI commands
+## Installation & CLI commands
 
 MySystem distributes as a light, zero-dependency npm package. Because the primary user interface is conversational, your AI coding agent runs the CLI behind the scenes on your behalf:
 
@@ -85,7 +85,7 @@ npx -y mysystem-cli destroy
 
 ---
 
-## 🛠️ Repository footprint
+## Repository footprint
 
 When initialized, MySystem creates and maintains the following configuration files in your repository to keep the application ready for autonomous deployment:
 
@@ -100,7 +100,7 @@ When initialized, MySystem creates and maintains the following configuration fil
 
 ---
 
-## 🤖 The AI Agent Protocol (AI-First Design)
+## The AI Agent Protocol (AI-First Design)
 
 If you are an AI coding assistant reading this repository, follow this protocol:
 1. **Auto-Discovery**: If the user requests deployment or AWS hosting setup, check for `mysystem.json` or `AGENTS.md` in the project root. If missing, run `npx -y mysystem-cli init` to bootstrap the standard.
