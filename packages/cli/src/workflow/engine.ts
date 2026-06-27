@@ -5,6 +5,7 @@ import { reviewService, EngineeringFinding } from '../services/review';
 import { autoFixService } from '../services/autofix';
 import { planningService } from '../services/plan';
 import { deploymentService } from '../services/deploy';
+import { synthesisService } from '../services/synthesis';
 import { verificationService } from '../services/verify';
 import { monitoringService } from '../services/monitor';
 import { WorkflowContext, createInitialContext } from './state';
@@ -13,6 +14,7 @@ import { readManifest, writeManifest, writeReviewHistory, writeDeploymentHistory
 import { connectAwsAndGithubOidc } from '../utils/installer';
 import { ProductionDecision } from '../advisor';
 import { renderProductionPlan } from './renderer';
+import { runEvaluationPrompt } from '../utils/aws-detect';
 
 export class WorkflowEngine {
   private context: WorkflowContext;
@@ -169,6 +171,16 @@ export class WorkflowEngine {
       // No blockers — continue automatically. No prompt needed.
       console.log('\x1b[32m✅ No deployment blockers. Proceeding automatically.\x1b[0m');
 
+      // Evaluation Mode Report & User Approval Prompt
+      const goAhead = await runEvaluationPrompt(
+        this.context.projectRoot,
+        this.context.projectName,
+        architectureReview
+      );
+      if (!goAhead) {
+        return false;
+      }
+
       // 7. Prepare AWS Environment
       this.context.currentState = 'PLANNING';
       this.renderProgress(4);
@@ -189,6 +201,16 @@ export class WorkflowEngine {
         domainName,
         ''
       );
+
+      // Synthesize runtime environment (Docker Compose, secrets, backups)
+      const synthesisSuccess = await synthesisService.synthesize(
+        this.context.plan,
+        this.context.characteristics,
+        this.context.projectRoot
+      );
+      if (!synthesisSuccess) {
+        throw new Error('Environment synthesis failed.');
+      }
 
       // Authenticate and provision AWS/GitHub connection
       console.log('\n🚀 Setting up OIDC Stack Trust Validation and deployment checks...');

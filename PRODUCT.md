@@ -32,6 +32,26 @@ MySystem establishes a clear set of Production Standards. The verification engin
 
 ---
 
+## 🎨 Environment Synthesis
+
+MySystem features a built-in Environment Synthesis capability to automatically translate architectural recommendations into a production-ready runtime environment.
+
+* **Conventions Preservation**: MySystem scans existing configurations (`.env`, `.env.example`, database files, ORM schemas) to match existing database URLs, ports, secrets, and conventions.
+* **Auto-Generated Containers**: When self-hosted PostgreSQL is recommended, MySystem configures official `postgres:16` Docker containers, persistent named volumes, networks, and daily backup script schedules.
+* **ORM & Migration Wiring**: Automatically detects ORMs (Prisma, Drizzle, TypeORM, Sequelize, Knex, SQLAlchemy, Django ORM) and configures them to execute migration routines cleanly once the database health check passes.
+* **Docker Compose Scaffolding**: Synthesizes a production-ready `docker-compose.yml` with dependencies, restarts, limits, and logging configured so developers don't have to write wiring themselves.
+
+---
+
+## 🔍 Evaluation Mode
+
+Before making any changes to AWS or GitHub, MySystem performs an automated evaluation step and presents an **Evaluation Report**:
+* **AWS Deployment Status**: Dynamically detects if the application is already hosted on AWS by auditing local manifests, configurations, active ECR repositories, and CloudFormation stacks.
+* **Cost & Blueprint Breakdown**: Lists what services will be created/updated, how much it will cost per month, and every step the deployment process will take.
+* **Explicit User Gatekeeping**: Halts and prompts the user for confirmation (`Proceed? (y/N)`) before triggering OIDC setup, Terraform modifications, or pushes, preserving full developer control.
+
+---
+
 ## 🚫 Non-Goals (Scope Freeze)
 * **No Multi-Cloud Support**: Support is strictly restricted to AWS. Do not introduce configurations for GCP, Azure, DigitalOcean, Hetzner, or generic providers.
 * **No Kubernetes**: Maintain lightweight, cost-effective EC2 monolith and ECS Fargate deployments. Do not introduce EKS or complex container orchestrators.

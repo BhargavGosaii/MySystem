@@ -62,7 +62,33 @@ Auditing checks are modularized under `packages/cli/src/services/review/`:
 
 ---
 
-## 5. The Production Review and Plan Engine
+## 5. Environment Synthesis Engine
+
+During the **Planning** phase, the Environment Synthesis Engine (`packages/cli/src/services/synthesis.ts`) translates the generated Production Plan into a complete container and runtime system:
+
+* **Conventions Mapping**: Scans files like `.env`, `.env.example`, and config files to inherit existing conventions, secrets, and database settings.
+* **Database Preservation**: If an existing external database (e.g. Supabase, Neon, RDS) is detected, MySystem maintains the existing connection rather than provisioning a new database.
+* **PostgreSQL Containers**: When self-hosted PostgreSQL is recommended, MySystem generates a local database service (`postgres:16-alpine`), dynamic credential variables, and persistent docker volumes.
+* **Automated Migrations**: Resolves the ORM type (Prisma, Drizzle, TypeORM, Sequelize, Knex, SQLAlchemy/Alembic, Django ORM) and constructs the appropriate container startup command to execute schema migrations immediately once the database health check passes.
+* **Docker Compose Synthesis**: Automatically outputs `docker-compose.yml` with dependencies, limits, logging, and startup orchestration predefined.
+* **Environment Sandboxing**: Populates synthesized environment files inside `.mysystem/env/` (e.g. `production.env`) without altering the developer's local `.env`.
+* **Disaster Recovery**: Synthesizes a daily database backup script (`backup.sh`) and database recovery instruction guides (`restore.md`).
+
+---
+
+## 6. Evaluation Mode & Deployment Detection
+
+Before MySystem initializes AWS stacks or configures GitHub workflows, it executes a non-destructive dry-run review called **Evaluation Mode**:
+
+* **State Detection**:
+  * **Local Manifest Check**: Queries `.mysystem/manifest.json` and `mysystem.json` to verify previous deployment logs.
+  * **AWS Infrastructure Query**: Uses the local project name to query ECR repository status (`aws ecr describe-repositories`) and CloudFormation status (`aws cloudformation describe-stacks`) to determine if active AWS resources already exist.
+* **Blueprint Generation**: Summarizes what modifications will be made, monthly costs, and lists every step the engine will execute in chronological order.
+* **Developer Confirmation Prompt**: Uses a readline-based prompt (`? Do you want to proceed with this deployment? (y/N)`) to gate the deployment pipeline, requiring explicit consent to go ahead. In testing/CI contexts, this prompt is bypassed automatically if `NODE_ENV=test` or `MYSYSTEM_AUTO_APPROVE=true`.
+
+---
+
+## 7. The Production Review and Plan Engine
 
 The verification engine (`packages/cli/src/advisor/`) is MySystem's core reasoning component. It is responsible for reading project characteristics, evaluating engineering knowledge, verifying the AI coding agent's choices against the Production Standards, and producing the Production Plan.
 
