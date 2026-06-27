@@ -1,5 +1,7 @@
 # MySystem Product Specification (PRODUCT.md)
 
+![MySystem Cover Banner](assets/coverPic.jpeg)
+
 This document defines the core product vision, target audience, promises, and non-goals for MySystem. It aligns contributors and AI agents on implementation boundaries.
 
 ---

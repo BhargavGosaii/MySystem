@@ -1,5 +1,7 @@
 # MySystem — Production Engineering Standard for AI Coding Agents
 
+![MySystem Cover Banner](assets/coverPic.jpeg)
+
 MySystem is an open-source Production Engineering Standard for AI coding agents deploying to AWS. 
 
 AI coding tools like Cursor, Claude Code, and Lovable are excellent at building application logic, but production deployment still requires deep infrastructure expertise. MySystem bridges this gap. It acts as the production handbook and verification framework that helps your AI agent configure and deploy your application safely into AWS infrastructure that you own.
