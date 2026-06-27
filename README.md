@@ -1,4 +1,4 @@
-# MySystem — Production Engineering Standard for AI Coding Agents
+# MySystem: Production Engineering Standard for AI Coding Agents
 
 ![MySystem Cover Banner](assets/coverPic.jpeg)
 
