@@ -138,7 +138,8 @@ export class WorkflowEngine {
         architectureReview.decisions,
         this.context.findings,
         architectureReview.totalMonthlyCost,
-        architectureReview.deploymentConfidence
+        architectureReview.deploymentConfidence,
+        architectureReview
       );
 
       // Write review history to manifest history

@@ -1,4 +1,4 @@
-import { ProductionDecision } from '../advisor';
+import { ProductionDecision, ArchitectureReview } from '../advisor';
 import { EngineeringFinding } from '../services/review';
 
 /**
@@ -10,7 +10,8 @@ export function renderProductionPlan(
   decisions: ProductionDecision[],
   findings: EngineeringFinding[],
   totalCost: number,
-  confidence: number
+  confidence: number,
+  review?: ArchitectureReview
 ): void {
   const getDecision = (key: string) => decisions.find(d => d.component === key);
 
@@ -64,6 +65,21 @@ export function renderProductionPlan(
 
   // Application
   printDecisionRow('Application', appType);
+  if (review) {
+    if (review.archetype) {
+      printDecisionRow('Application Archetype', `\x1b[36m${review.archetype}\x1b[0m`);
+    }
+    if (review.simplicityScore !== undefined) {
+      let rating = 'Simple';
+      if (review.simplicityScore >= 85) rating = 'Highly Simple / Minimal';
+      else if (review.simplicityScore >= 70) rating = 'Moderate Complexity';
+      else rating = 'High Complexity / Multi-Service';
+      printDecisionRow('Simplicity Score', `\x1b[32m${review.simplicityScore}% (${rating})\x1b[0m`);
+    }
+    if (review.complexityScore !== undefined) {
+      printDecisionRow('Complexity Score', `${review.complexityScore}`);
+    }
+  }
   console.log('');
 
   // Hosting
@@ -136,6 +152,41 @@ export function renderProductionPlan(
   printDecisionRow('Deployment Confidence', `\x1b[32m${confidence}%\x1b[0m`);
   console.log('\x1b[90mℹ️  Decisions aligned with the MySystem Production Standard (AGENTS.md)\x1b[0m');
   console.log('\x1b[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m\n');
+
+  // Infrastructure Justification
+  if (review && review.justifications) {
+    console.log('\x1b[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
+    console.log('\x1b[1m         INFRASTRUCTURE JUSTIFICATION          \x1b[0m');
+    console.log('\x1b[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m\n');
+
+    Object.values(review.justifications).forEach(j => {
+      console.log(`  \x1b[1m${j.service}\x1b[0m`);
+      console.log(`  Decision:                  ${j.decision === 'Included' ? '\x1b[32mIncluded\x1b[0m' : '\x1b[33mNot Included\x1b[0m'}`);
+      console.log(`  Evidence:                  ${j.evidence.join(', ')}`);
+      if (j.decision === 'Included') {
+        console.log(`  Benefits:                  ${j.benefits.join(', ')}`);
+        console.log(`  Operational Complexity:    ${j.operationalComplexity}`);
+        console.log(`  Estimated Monthly Cost:    $${j.monthlyCost.toFixed(2)}/month`);
+      } else {
+        const savings = j.monthlyCost || 12.00;
+        console.log(`  Estimated Monthly Savings: ~$${savings.toFixed(2)}/month`);
+      }
+      console.log(`  Reason:                    ${j.reasonRejectedOrSelected}`);
+      console.log('');
+    });
+    console.log('\x1b[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m\n');
+  }
+
+  // Future Scaling / Upgrade Path
+  if (review && review.upgradePath && review.upgradePath.length > 0) {
+    console.log('\x1b[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
+    console.log('\x1b[1m         FUTURE SCALING & UPGRADE PATHS        \x1b[0m');
+    console.log('\x1b[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m\n');
+    review.upgradePath.forEach(path => {
+      console.log(`  🚀 \x1b[1m${path}\x1b[0m`);
+    });
+    console.log('\n\x1b[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m\n');
+  }
 
   // 3. Render Review Findings
   const autofixes = findings.filter(f => f.action === 'AUTOFIX');
