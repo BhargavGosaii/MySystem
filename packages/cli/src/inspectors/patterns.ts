@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { scanProjectFiles, getIgnorePatterns } from '../utils/scanner';
 
 export interface PatternFacts {
   hasWebsockets: boolean;
@@ -14,7 +15,8 @@ export async function inspectPatterns(projectRoot: string): Promise<PatternFacts
     hasDirectDbConnections: false,
   };
 
-  const files = scanForSourceFiles(projectRoot);
+  const ignorePatterns = getIgnorePatterns(projectRoot);
+  const files = scanProjectFiles(projectRoot, projectRoot, ignorePatterns);
 
   for (const file of files) {
     try {
@@ -66,24 +68,3 @@ export async function inspectPatterns(projectRoot: string): Promise<PatternFacts
   return facts;
 }
 
-function scanForSourceFiles(dir: string, fileList: string[] = []): string[] {
-  if (!fs.existsSync(dir)) return fileList;
-  
-  const entries = fs.readdirSync(dir);
-  for (const entry of entries) {
-    const filePath = path.join(dir, entry);
-    const stat = fs.statSync(filePath);
-
-    if (stat.isDirectory()) {
-      if (['node_modules', '.git', 'dist', 'build', '.next', 'out', 'terraform', 'knowledge'].includes(entry)) {
-        continue;
-      }
-      scanForSourceFiles(filePath, fileList);
-    } else {
-      if (/\.(js|ts|tsx|py)$/.test(entry)) {
-        fileList.push(filePath);
-      }
-    }
-  }
-  return fileList;
-}

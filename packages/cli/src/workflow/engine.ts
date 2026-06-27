@@ -18,12 +18,17 @@ import { runEvaluationPrompt } from '../utils/aws-detect';
 
 export class WorkflowEngine {
   private context: WorkflowContext;
+  private isJson: boolean;
+  private isDryRun: boolean;
 
-  constructor(projectRoot: string) {
+  constructor(projectRoot: string, isJson: boolean = false, isDryRun: boolean = false) {
     this.context = createInitialContext(projectRoot);
+    this.isJson = isJson;
+    this.isDryRun = isDryRun;
   }
 
   private renderProgress(currentStepIndex: number) {
+    if (this.isJson) return;
     const steps = [
       'Inspecting Project',
       'Engineering Review',
@@ -55,6 +60,17 @@ export class WorkflowEngine {
   }
 
   async run(): Promise<boolean> {
+    const originalLog = console.log;
+    const originalWarn = console.warn;
+    const originalError = console.error;
+
+    if (this.isJson) {
+      console.log = () => {};
+      console.warn = () => {};
+      console.error = () => {};
+      process.env.MYSYSTEM_AUTO_APPROVE = 'true';
+    }
+
     try {
       // Load manifest if it exists
       const manifest = readManifest(this.context.projectRoot);
@@ -161,10 +177,25 @@ export class WorkflowEngine {
       const unresolvedBlockers = this.context.findings.filter(f => f.blocksDeployment && !f.fixed);
 
       if (blockerDecisions.length > 0 || unresolvedBlockers.length > 0) {
-        console.log('\n\x1b[31m🛑 Deployment blocked:\x1b[0m');
-        blockerDecisions.forEach(b => console.log(`   - \x1b[33m${b.component}\x1b[0m: ${b.reasoning.join(' ')}`));
-        unresolvedBlockers.forEach(f => console.log(`   - \x1b[33m${f.title}\x1b[0m: ${f.description}`));
-        console.log('\n   Resolve the above issues and re-run MySystem.');
+        if (this.isJson) {
+          console.log = originalLog;
+          console.warn = originalWarn;
+          console.error = originalError;
+          originalLog(JSON.stringify({
+            success: false,
+            failedState: 'DECIDING',
+            error: 'Deployment blocked by architectural or security issues.',
+            blockers: [
+              ...blockerDecisions.map(b => `${b.component}: ${b.reasoning.join(' ')}`),
+              ...unresolvedBlockers.map(f => `${f.title}: ${f.description}`)
+            ]
+          }, null, 2));
+        } else {
+          console.log('\n\x1b[31m🛑 Deployment blocked:\x1b[0m');
+          blockerDecisions.forEach(b => console.log(`   - \x1b[33m${b.component}\x1b[0m: ${b.reasoning.join(' ')}`));
+          unresolvedBlockers.forEach(f => console.log(`   - \x1b[33m${f.title}\x1b[0m: ${f.description}`));
+          console.log('\n   Resolve the above issues and re-run MySystem.');
+        }
         return false;
       }
 
@@ -178,7 +209,66 @@ export class WorkflowEngine {
         architectureReview
       );
       if (!goAhead) {
+        if (this.isJson) {
+          console.log = originalLog;
+          console.warn = originalWarn;
+          console.error = originalError;
+        }
         return false;
+      }
+
+      // Dry Run execution bypass
+      if (this.isDryRun) {
+        if (this.isJson) {
+          console.log = originalLog;
+          console.warn = originalWarn;
+          console.error = originalError;
+          originalLog(JSON.stringify({
+            success: true,
+            dryRun: true,
+            projectName: this.context.projectName,
+            plan: {
+              hosting: hostingDecision?.value,
+              database: dbDecision?.value,
+              redis: architectureReview.decisions.find(d => d.component === 'redis')?.value,
+              pgBouncer: architectureReview.decisions.find(d => d.component === 'pgBouncer')?.value,
+              waf: architectureReview.decisions.find(d => d.component === 'waf')?.value,
+              estimatedCost: architectureReview.totalMonthlyCost
+            },
+            proposedFiles: [
+              'Dockerfile',
+              'docker-compose.yml',
+              '.mysystem/env/production.env',
+              '.mysystem/env/staging.env',
+              '.mysystem/env/development.env',
+              '.mysystem/scripts/backup.sh',
+              '.mysystem/docs/restore.md',
+              'terraform/*.tf',
+              '.github/workflows/mysystem-deploy.yml',
+              '.github/workflows/mysystem-destroy.yml',
+              'mysystem.json'
+            ]
+          }, null, 2));
+        } else {
+          console.log('\n\x1b[33m⚡ Dry Run Mode Active. Skipping AWS stack creation, file writes, and deployment.\x1b[0m');
+          console.log('\n📁 Proposed Files to Create/Modify:');
+          console.log('  - [NEW] Dockerfile');
+          console.log('  - [NEW] docker-compose.yml');
+          console.log('  - [NEW] .mysystem/env/production.env');
+          console.log('  - [NEW] .mysystem/env/staging.env');
+          console.log('  - [NEW] .mysystem/env/development.env');
+          console.log('  - [NEW] .mysystem/scripts/backup.sh');
+          console.log('  - [NEW] .mysystem/docs/restore.md');
+          if (isProdTier) {
+            console.log('  - [NEW] terraform/*.tf (ECS production modules)');
+          } else {
+            console.log('  - [NEW] terraform/*.tf (EC2 monolithic startup modules)');
+          }
+          console.log('  - [NEW] .github/workflows/mysystem-deploy.yml');
+          console.log('  - [NEW] .github/workflows/mysystem-destroy.yml');
+          console.log('  - [NEW] mysystem.json');
+        }
+        return true;
       }
 
       // 7. Prepare AWS Environment
@@ -327,6 +417,29 @@ export class WorkflowEngine {
       };
       writeDeploymentHistory(this.context.projectRoot, deploymentSession);
 
+      if (this.isJson) {
+        console.log = originalLog;
+        console.warn = originalWarn;
+        console.error = originalError;
+        originalLog(JSON.stringify({
+          success: true,
+          projectName: this.context.projectName,
+          plan: {
+            hosting: this.context.plan?.config.hosting,
+            database: this.context.plan?.config.database,
+            redis: this.context.plan?.config.redis,
+            pgBouncer: this.context.plan?.config.pgBouncer,
+            waf: this.context.plan?.config.waf,
+            estimatedCost: architectureReview.totalMonthlyCost
+          },
+          summary: {
+            applicationUrl: summary.applicationUrl,
+            healthStatus: summary.healthStatus,
+            httpsStatus: summary.httpsStatus
+          }
+        }, null, 2));
+      }
+
       return true;
 
     } catch (err: any) {
@@ -373,6 +486,17 @@ export class WorkflowEngine {
         hosting: this.context.plan?.config.hosting || 'unknown'
       };
       writeDeploymentHistory(this.context.projectRoot, deploymentSession);
+
+      if (this.isJson) {
+        console.log = originalLog;
+        console.warn = originalWarn;
+        console.error = originalError;
+        originalLog(JSON.stringify({
+          success: false,
+          failedState,
+          error: err.message
+        }, null, 2));
+      }
 
       this.context.currentState = 'FAILED';
       return false;

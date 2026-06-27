@@ -3,10 +3,12 @@ import * as path from 'path';
 import { ProjectCharacteristics } from '../../inspectors';
 import { EngineeringFinding } from '../review';
 import { parseKnowledgeFile } from '../../advisor/interpreter';
+import { scanProjectFiles, getIgnorePatterns } from '../../utils/scanner';
 
 export async function scanSecurity(characteristics: ProjectCharacteristics, projectRoot: string, knowledgeBaseDir: string): Promise<EngineeringFinding[]> {
   const findings: EngineeringFinding[] = [];
-  const sourceFiles = scanForSourceFiles(projectRoot);
+  const ignorePatterns = getIgnorePatterns(projectRoot);
+  const sourceFiles = scanProjectFiles(projectRoot, projectRoot, ignorePatterns);
 
   let hasSqliSmells = false;
   const sqliEvidence: string[] = [];
@@ -113,23 +115,3 @@ export async function scanSecurity(characteristics: ProjectCharacteristics, proj
   return findings;
 }
 
-function scanForSourceFiles(dir: string, fileList: string[] = []): string[] {
-  if (!fs.existsSync(dir)) return fileList;
-  const entries = fs.readdirSync(dir);
-  for (const entry of entries) {
-    const filePath = path.join(dir, entry);
-    const stat = fs.statSync(filePath);
-
-    if (stat.isDirectory()) {
-      if (['node_modules', '.git', 'dist', 'build', '.next', 'out', 'terraform', 'knowledge'].includes(entry)) {
-        continue;
-      }
-      scanForSourceFiles(filePath, fileList);
-    } else {
-      if (/\.(js|ts|tsx|py)$/.test(entry)) {
-        fileList.push(filePath);
-      }
-    }
-  }
-  return fileList;
-}

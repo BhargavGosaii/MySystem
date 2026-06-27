@@ -31,12 +31,15 @@ Examples:
 }
 
 async function main() {
+  const isJson = args.includes('--json');
+  const isDryRun = args.includes('--dry-run');
+
   switch (command) {
     case 'init':
-      await runInit(process.cwd());
+      await runInit(process.cwd(), isJson, isDryRun);
       break;
     case 'audit':
-      runAudit(process.cwd());
+      await runAudit(process.cwd(), isJson);
       break;
     case 'logs':
       await runLogs(process.cwd());
