@@ -1,0 +1,8 @@
+{
+  "name": "nextjs-saas",
+  "dependencies": {
+    "next": "^14.0.0",
+    "@prisma/client": "^5.0.0",
+    "pg": "^8.11.0"
+  }
+}

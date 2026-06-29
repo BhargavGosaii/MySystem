@@ -1,23 +1,33 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { ProjectCharacteristics } from '../inspectors';
-import { parseKnowledgeFile, ParsedKnowledge, ConfidenceRule } from './interpreter';
+import { parseDecisionModule, ParsedDecisionKnowledge, ConfidenceRule } from './interpreter';
 
-// ─── Existing Types ──────────────────────────────────────────────
+// ─── Component Recommendation Interface ──────────────────────────
+
+export interface AlternativeOption {
+  option: string;
+  costTier: 'Very Low' | 'Low' | 'Medium' | 'High' | 'Very High';
+  complexityTier: 'Low' | 'Medium' | 'High';
+  suitability: number;
+  reason: string;
+}
 
 export interface ComponentRecommendation {
   component: string;
-  recommendation: 'Recommended' | 'Not Recommended' | 'Optional';
+  recommendation: string; // e.g. "ec2", "postgresql", "redis", "pgbouncer", "waf"
   confidence: number;
   evidence: string[];
   tradeoffs: {
     pros: string[];
     cons: string[];
   };
-  alternatives: {
-    option: string;
-    reasoning: string;
-  }[];
+  costTier: 'Very Low' | 'Low' | 'Medium' | 'High' | 'Very High';
+  complexityTier: 'Low' | 'Medium' | 'High';
+  suitability: number; // 0-100
+  reasoning: string[];
+  alternatives: AlternativeOption[];
+  migrationTrigger: string;
   monthlyCost: number;
 }
 
@@ -42,8 +52,6 @@ export interface ServiceJustification {
   monthlyCost: number;
   reasonRejectedOrSelected: string;
 }
-
-// ─── Extended Architecture Review ──────────────────────────────
 
 export interface ArchitectureReview {
   projectName: string;
@@ -99,8 +107,8 @@ function evaluateRule(rule: ConfidenceRule, ctx: EvaluationContext): boolean {
   return rule.negated ? !matched : matched;
 }
 
-function evaluateKnowledgeRules(
-  knowledge: ParsedKnowledge,
+function evaluateDecisionRules(
+  knowledge: ParsedDecisionKnowledge,
   ctx: EvaluationContext
 ): { result: string; confidence: number } | null {
   for (const rule of knowledge.confidenceRules) {
@@ -141,12 +149,10 @@ function inferArchetype(
 
   const hasDb = !!(chars.databaseLib || chars.ormLib || chars.databaseUrlConfigured);
 
-  // 1. Realtime SaaS
   if (chars.hasWebsockets) {
     return 'Realtime SaaS';
   }
 
-  // 2. Creator Platform / Marketplace
   if (hasPayment && hasDb && hasAuth) {
     if (allDeps['shopify'] || reqsText.includes('commerce') || chars.name.includes('shop') || chars.name.includes('market')) {
       return 'Marketplace';
@@ -154,47 +160,38 @@ function inferArchetype(
     return 'Creator Platform';
   }
 
-  // 3. Learning Platform
   if (chars.name.includes('learn') || chars.name.includes('course') || allDeps['moodle'] || reqsText.includes('moodle')) {
     return 'Learning Platform';
   }
 
-  // 4. Community Platform
   if (chars.name.includes('forum') || chars.name.includes('community') || allDeps['discourse']) {
     return 'Community Platform';
   }
 
-  // 5. Streaming Platform
   if (chars.hasFileUploads && (allDeps['fluent-ffmpeg'] || allDeps['multer'] || reqsText.includes('ffmpeg') || reqsText.includes('streaming'))) {
     return 'Streaming Platform';
   }
 
-  // 6. Worker Service
   if (chars.queueLib && !chars.port) {
     return 'Worker Service';
   }
 
-  // 7. CRUD SaaS
   if (hasDb && hasAuth) {
     return 'CRUD SaaS';
   }
 
-  // 8. Admin Dashboard
   if (chars.name.includes('admin') || chars.name.includes('dashboard')) {
     return 'Admin Dashboard';
   }
 
-  // 9. API Service
   if (chars.framework === 'fastapi' || (chars.framework === 'node' && chars.name.includes('api'))) {
     return 'API Service';
   }
 
-  // 10. Documentation Site
   if (allDeps['docusaurus'] || allDeps['nextra'] || chars.name.includes('docs') || chars.name.includes('documentation')) {
     return 'Documentation Site';
   }
 
-  // 11. Portfolio / Marketing Website / Company Website
   if (!hasDb && !chars.hasWebsockets) {
     if (chars.name.includes('portfolio') || chars.name.includes('cv') || chars.name.includes('resume')) {
       return 'Portfolio';
@@ -217,27 +214,32 @@ export async function runAdvisor(
 ): Promise<ArchitectureReview> {
   const resolvedDir = knowledgeDir || path.join(__dirname, '../knowledge');
 
-  const getKnowledge = (fileName: string): ParsedKnowledge => {
+  const getKnowledge = (dirName: string): ParsedDecisionKnowledge => {
     try {
-      return parseKnowledgeFile(path.join(resolvedDir, fileName));
-    } catch {
+      return parseDecisionModule(path.join(resolvedDir, dirName));
+    } catch (err: any) {
+      // Fallback empty configuration
       return {
-        name: fileName.replace('.md', ''),
-        purpose: 'AWS architecture resource',
-        pros: [],
-        cons: [],
-        complexity: 'Low',
-        cost: 0,
-        confidenceRules: [],
+        decisionName: dirName,
+        defaultChoice: 'none',
+        costTier: 'Low',
+        complexityTier: 'Low',
+        alternatives: [],
+        purpose: 'AWS architecture decision module',
+        indicators: [],
+        avoidWhen: [],
+        migrationTriggers: [],
+        tradeoffs: {},
+        confidenceRules: []
       };
     }
   };
 
-  const computeRules = getKnowledge('architecture/compute.md');
-  const redisRules = getKnowledge('architecture/redis.md');
-  const pgbouncerRules = getKnowledge('architecture/pgbouncer.md');
-  const securityRules = getKnowledge('architecture/security.md');
-  const sentryRules = getKnowledge('architecture/sentry.md');
+  const hostingMod = getKnowledge('hosting');
+  const databaseMod = getKnowledge('database');
+  const cachingMod = getKnowledge('caching');
+  const securityMod = getKnowledge('security');
+  const networkingMod = getKnowledge('networking');
 
   const ctx = buildEvaluationContext(characteristics);
   const recs: Record<string, ComponentRecommendation> = {};
@@ -309,10 +311,9 @@ export async function runAdvisor(
   const aiRedis = existingConfig.redis;
   const aiPgb = existingConfig.pgBouncer !== undefined ? existingConfig.pgBouncer : existingConfig.rdsProxy;
   const aiWaf = existingConfig.waf;
-  const aiSentry = existingConfig.sentry !== undefined ? existingConfig.sentry : existingConfig.sentryDsn;
 
   // ───────────────────────────────────────────────────────────
-  // PART 1: Evidence-Driven Architecture & Decision Audit
+  // PART 1: Decision Heuristics
   // ───────────────────────────────────────────────────────────
 
   // 1. Hosting (Compute - EC2 vs ECS Fargate)
@@ -331,14 +332,14 @@ export async function runAdvisor(
   if (hasHighAvailabilityReq) hostingEvidence.push('High availability / multi-zone target requested.');
   if (hasWebsockets && hasHighAvailabilityReq) hostingEvidence.push('Horizontal WebSocket scaling requested.');
 
-  let hostingValue: 'ec2' | 'ecs-fargate' = 'ec2';
-  if (hostingEvidence.length > 0) {
-    hostingValue = 'ecs-fargate';
-  }
+  // Bind properties to context
+  ctx.hasWebsockets = hasWebsockets;
+  ctx.queueLib = hasMultipleServices;
 
+  let hostingValue = evaluateDecisionRules(hostingMod, ctx)?.result || 'ec2';
   let hostingSource = 'evidence-engine';
   let hostingReasoning = hostingValue === 'ecs-fargate'
-    ? [...hostingEvidence, '[Golden Rule: Preserve the application\'s architecture]']
+    ? [...hostingEvidence, '[Golden Rule: Prefer AWS native services]']
     : ['Smallest production-ready compute layer: Single virtual machine running Docker Compose.', '[Golden Rule: Minimize AWS monthly cost]'];
 
   if (aiHosting && (aiHosting === 'ec2' || aiHosting === 'ecs-fargate')) {
@@ -351,21 +352,41 @@ export async function runAdvisor(
     }
   }
 
-  // Rec metadata
+  // Calculate Suitability
+  const ec2Suitability = (hasWebsockets || hasMultipleServices) ? 40 : 96;
+  const ecsSuitability = (hasWebsockets || hasMultipleServices || hasHighAvailabilityReq) ? 92 : 42;
+
   const hostingRec: ComponentRecommendation = {
-    component: 'Hosting (Compute)',
-    recommendation: 'Recommended',
+    component: 'Compute Hosting Platform',
+    recommendation: hostingValue,
     confidence: hostingValue === 'ecs-fargate' ? 90 : 95,
     evidence: hostingValue === 'ecs-fargate' ? hostingEvidence : ['Stateless monolithic footprint with low traffic indicators.'],
-    tradeoffs: { pros: computeRules.pros, cons: computeRules.cons },
-    alternatives: hostingValue === 'ecs-fargate'
-      ? [{ option: 'EC2', reasoning: 'Cheaper and simpler for single-instance, but lacks automatic load-balanced rolling deployments.' }]
-      : [{ option: 'ECS Fargate', reasoning: 'More scalable, but introduces ALB and container cluster overhead costs.' }],
-    monthlyCost: hostingValue === 'ecs-fargate' ? 15.00 : 3.20,
+    tradeoffs: {
+      pros: hostingMod.tradeoffs['ec2']?.pros || ['Lowest baseline cost', 'Minimal operational overhead'],
+      cons: hostingMod.tradeoffs['ec2']?.cons || ['Single point of failure', 'Vertical scaling only']
+    },
+    costTier: hostingValue === 'ecs-fargate' ? 'Medium' : 'Low',
+    complexityTier: hostingValue === 'ecs-fargate' ? 'High' : 'Low',
+    suitability: hostingValue === 'ecs-fargate' ? ecsSuitability : ec2Suitability,
+    reasoning: hostingReasoning,
+    migrationTrigger: hostingMod.migrationTriggers[0] || 'Upgrade to ECS Fargate if average CPU exceeds 70% or multiple microservices are introduced.',
+    alternatives: [
+      {
+        option: hostingValue === 'ecs-fargate' ? 'EC2' : 'ECS Fargate',
+        costTier: hostingValue === 'ecs-fargate' ? 'Low' : 'Medium',
+        complexityTier: hostingValue === 'ecs-fargate' ? 'Low' : 'High',
+        suitability: hostingValue === 'ecs-fargate' ? ec2Suitability : ecsSuitability,
+        reason: hostingValue === 'ecs-fargate'
+          ? 'Requires manual virtual machine orchestration and updates; lacks native container high-availability targets.'
+          : 'Introduces Application Load Balancer and cluster orchestration overhead for simple monoliths.'
+      }
+    ],
+    monthlyCost: hostingValue === 'ecs-fargate' ? 15.00 : 3.20
   };
   recs['hosting'] = hostingRec;
 
-  // 2. Database (RDS vs SQLite/None)
+
+  // 2. Database (RDS vs Docker Postgres/None)
   const hasSqlLib = !!(
     allDeps['pg'] ||
     allDeps['postgres'] ||
@@ -387,7 +408,11 @@ export async function runAdvisor(
   if (hasSqlLib && !isSQLite) rdsEvidence.push(`SQL Database library detected: ${characteristics.databaseLib || characteristics.ormLib || 'driver'}.`);
   if (characteristics.databaseUrlConfigured) rdsEvidence.push('Database connection string found in environment.');
 
-  let dbValue = rdsEvidence.length > 0 ? 'postgresql' : 'none';
+  // Set properties in context for database evaluation
+  ctx.hasDirectDbConnections = rdsEvidence.length > 0;
+  ctx.hasFrameworkDb = hasSqlLib && !isSQLite;
+
+  let dbValue = evaluateDecisionRules(databaseMod, ctx)?.result || 'none';
   let dbSource = 'evidence-engine';
   let dbReasoning = dbValue === 'postgresql'
     ? [...rdsEvidence, '[Golden Rule: Never ask a question that can be answered through inspection]']
@@ -400,18 +425,38 @@ export async function runAdvisor(
     dbReasoning = [`Preserved AI decision to use database: ${dbValue}.`, '[Golden Rule: Preserve the application\'s architecture]'];
   }
 
+  const dbPostgresSuitability = dbValue !== 'none' ? 95 : 20;
+  const dbNoneSuitability = dbValue !== 'none' ? 25 : 98;
+
   const dbRec: ComponentRecommendation = {
-    component: 'Database',
-    recommendation: dbValue !== 'none' ? 'Recommended' : 'Not Recommended',
+    component: 'SQL Database Hosting',
+    recommendation: dbValue,
     confidence: 95,
     evidence: dbValue !== 'none' ? rdsEvidence : ['No database package manifests or environment variables detected.'],
-    tradeoffs: { pros: ['Managed backups', 'Automatic patching'], cons: ['Adds baseline monthly cost'] },
-    alternatives: dbValue !== 'none'
-      ? [{ option: 'SQLite', reasoning: 'Can be used for local testing but suffers from write-lock issues on server clusters.' }]
-      : [{ option: 'PostgreSQL RDS', reasoning: 'Add if transactional user data or persistent schemas are introduced.' }],
-    monthlyCost: dbValue !== 'none' ? 15.00 : 0.00,
+    tradeoffs: {
+      pros: databaseMod.tradeoffs['postgresql']?.pros || ['Automated backups', 'Automatic minor upgrades'],
+      cons: databaseMod.tradeoffs['postgresql']?.cons || ['Adds operational cost']
+    },
+    costTier: dbValue !== 'none' ? 'Medium' : 'Very Low',
+    complexityTier: dbValue !== 'none' ? 'Medium' : 'Low',
+    suitability: dbValue !== 'none' ? dbPostgresSuitability : dbNoneSuitability,
+    reasoning: dbReasoning,
+    migrationTrigger: databaseMod.migrationTriggers[0] || 'Upgrade to managed RDS if database size exceeds 20GB or high-availability failover is required.',
+    alternatives: [
+      {
+        option: dbValue !== 'none' ? 'SQLite/None' : 'PostgreSQL',
+        costTier: dbValue !== 'none' ? 'Very Low' : 'Medium',
+        complexityTier: dbValue !== 'none' ? 'Low' : 'Medium',
+        suitability: dbValue !== 'none' ? dbNoneSuitability : dbPostgresSuitability,
+        reason: dbValue !== 'none'
+          ? 'Cannot support multi-instance cluster writing safely due to file system locking.'
+          : 'Adds unnecessary hosting billing for static frontend or stateless APIs.'
+      }
+    ],
+    monthlyCost: dbValue !== 'none' ? 15.00 : 0.00
   };
   recs['database'] = dbRec;
+
 
   // 3. Redis (Cache & Broker)
   const redisEvidence: string[] = [];
@@ -428,7 +473,12 @@ export async function runAdvisor(
     redisEvidence.push('Redis connection URL detected in environment.');
   }
 
-  let redisValue = redisEvidence.length > 0;
+  // Set properties in context for cache evaluation
+  ctx.hasBullMQ = !!(allDeps['bullmq'] || allDeps['bull'] || reqsText.includes('celery'));
+  ctx.hasRedisClient = !!(allDeps['redis'] || allDeps['ioredis'] || characteristics.redisUrlConfigured);
+  ctx.hasCelery = reqsText.includes('celery');
+
+  let redisValue = evaluateDecisionRules(cachingMod, ctx)?.result === 'redis';
   let redisSource = 'evidence-engine';
   let redisReasoning = redisValue
     ? [...redisEvidence, '[Golden Rule: Prefer AWS native services]']
@@ -440,18 +490,38 @@ export async function runAdvisor(
     redisReasoning = [`Preserved AI decision to use Redis: ${redisValue}.`, '[Golden Rule: Preserve the application\'s architecture]'];
   }
 
+  const redisSuitability = redisValue ? 95 : 30;
+  const redisNoneSuitability = redisValue ? 25 : 98;
+
   const redisRec: ComponentRecommendation = {
-    component: 'Redis Cache & Messaging',
-    recommendation: redisValue ? 'Recommended' : 'Not Recommended',
+    component: 'In-Memory Caching',
+    recommendation: redisValue ? 'redis' : 'none',
     confidence: 95,
     evidence: redisValue ? redisEvidence : ['No caching layers, background queue workers, or WebSocket indicators found.'],
-    tradeoffs: { pros: redisRules.pros, cons: redisRules.cons },
-    alternatives: redisValue
-      ? [{ option: 'In-Memory Cache (Local)', reasoning: 'Saves cost, but locks cache states to a single process. Fails in multi-instance scale.' }]
-      : [{ option: 'ElastiCache Redis', reasoning: 'Add when sub-millisecond query caches, job queues, or session persistence are required.' }],
-    monthlyCost: redisValue ? 12.00 : 0.00,
+    tradeoffs: {
+      pros: cachingMod.tradeoffs['redis']?.pros || ['Sub-millisecond query caches', 'High-throughput broker'],
+      cons: cachingMod.tradeoffs['redis']?.cons || ['Adds extra cache configuration']
+    },
+    costTier: redisValue ? 'Medium' : 'Very Low',
+    complexityTier: redisValue ? 'Medium' : 'Low',
+    suitability: redisValue ? redisSuitability : redisNoneSuitability,
+    reasoning: redisReasoning,
+    migrationTrigger: cachingMod.migrationTriggers[0] || 'Add ElastiCache Redis if background worker queues or multi-node WebSocket sync are introduced.',
+    alternatives: [
+      {
+        option: redisValue ? 'None/In-Memory' : 'Redis',
+        costTier: redisValue ? 'Very Low' : 'Medium',
+        complexityTier: redisValue ? 'Low' : 'Medium',
+        suitability: redisValue ? redisNoneSuitability : redisSuitability,
+        reason: redisValue
+          ? 'Cache state would be locked to a single instance, crashing worker queues on scale out.'
+          : 'Unnecessary caching dependency for static frontends or simple CRUD routes.'
+      }
+    ],
+    monthlyCost: redisValue ? 12.00 : 0.00
   };
   recs['redis'] = redisRec;
+
 
   // 4. PgBouncer (RDS Connection Proxy)
   const pgbEvidence: string[] = [];
@@ -459,15 +529,19 @@ export async function runAdvisor(
     if (characteristics.framework === 'nextjs') {
       pgbEvidence.push('Next.js/Serverless routes trigger connection pool spikes.');
     }
-    if (allDeps['prisma'] || reqsText.includes('prisma')) {
+    if (allDeps['prisma'] || allDeps['@prisma/client'] || reqsText.includes('prisma')) {
       pgbEvidence.push('Prisma client connection pooling requires RDS proxying under high concurrency.');
     }
     if (hostingValue === 'ecs-fargate' && hasHighAvailabilityReq) {
-      pgbEvidence.push('Multiple concurrent container instances require a centralized connection proxy.');
+      pgbEvidence.push('Multiple concurrent container instances require a central connection proxy.');
     }
   }
 
-  let pgbValue = pgbEvidence.length > 0;
+  // Set properties in context for database proxy evaluation
+  ctx.isServerlessSpiky = pgbEvidence.length > 0;
+  ctx.postgresql = dbValue === 'postgresql';
+
+  let pgbValue = dbValue === 'postgresql' && pgbEvidence.length > 0;
   let pgbSource = 'evidence-engine';
   let pgbReasoning = pgbValue
     ? [...pgbEvidence, '[Golden Rule: Prefer AWS native services]']
@@ -479,18 +553,38 @@ export async function runAdvisor(
     pgbReasoning = [`Preserved AI decision to use PgBouncer: ${pgbValue}.`, '[Golden Rule: Preserve the application\'s architecture]'];
   }
 
+  const pgbSuitability = pgbValue ? 90 : 20;
+  const pgbNoneSuitability = pgbValue ? 30 : 98;
+
   const pgbRec: ComponentRecommendation = {
-    component: 'PgBouncer Connection Pooling',
-    recommendation: pgbValue ? 'Recommended' : 'Not Recommended',
+    component: 'Database Connection Proxy',
+    recommendation: pgbValue ? 'pgbouncer' : 'none',
     confidence: 90,
-    evidence: pgbValue ? pgbEvidence : ['Direct client-side connection pooling is sufficient for single server.'],
-    tradeoffs: { pros: pgbouncerRules.pros, cons: pgbouncerRules.cons },
-    alternatives: pgbValue
-      ? [{ option: 'Direct RDS Connection Pool', reasoning: 'Internal pool config works, but risks connection spikes.' }]
-      : [{ option: 'AWS RDS Proxy', reasoning: 'Deploy when scaling beyond 80 parallel client database connections.' }],
-    monthlyCost: pgbValue ? 15.00 : 0.00,
+    evidence: pgbValue ? pgbEvidence : ['Direct client-side connection pooling is sufficient.'],
+    tradeoffs: {
+      pros: databaseMod.tradeoffs['pgbouncer']?.pros || ['Manages connection limits', 'Protects RDS pool limits'],
+      cons: databaseMod.tradeoffs['pgbouncer']?.cons || ['Adds proxy routing overhead']
+    },
+    costTier: pgbValue ? 'Low' : 'Very Low',
+    complexityTier: pgbValue ? 'Medium' : 'Low',
+    suitability: pgbValue ? pgbSuitability : pgbNoneSuitability,
+    reasoning: pgbReasoning,
+    migrationTrigger: 'Deploy AWS RDS Proxy when database connection pools spike beyond 80 connections.',
+    alternatives: [
+      {
+        option: pgbValue ? 'Direct Connection' : 'PgBouncer',
+        costTier: pgbValue ? 'Very Low' : 'Low',
+        complexityTier: pgbValue ? 'Low' : 'Medium',
+        suitability: pgbValue ? pgbNoneSuitability : pgbSuitability,
+        reason: pgbValue
+          ? 'Risk of database connection starvation under serverless or auto-scaled container surges.'
+          : 'Direct client connection pool sizing is sufficient for low concurrency workloads.'
+      }
+    ],
+    monthlyCost: pgbValue ? 15.00 : 0.00
   };
   recs['pgbouncer'] = pgbRec;
+
 
   // 5. AWS WAF (Web Application Firewall)
   const wafEvidence: string[] = [];
@@ -498,11 +592,13 @@ export async function runAdvisor(
     wafEvidence.push('Application has a database and user auth system exposed to public routes.');
   }
 
-  let wafValue = wafEvidence.length > 0;
+  ctx.hasAuthAndDb = hasAuth && dbValue === 'postgresql';
+
+  let wafValue = evaluateDecisionRules(securityMod, ctx)?.result === 'waf';
   let wafSource = 'evidence-engine';
   let wafReasoning = wafValue
     ? [...wafEvidence, '[Golden Rule: Prefer AWS native services]']
-    : ['Static-first application or no sensitive auth database inputs detected.', '[Golden Rule: Avoid unnecessary infrastructure]'];
+    : ['No database user auth or sensitive public input endpoints detected.', '[Golden Rule: Avoid unnecessary infrastructure]'];
 
   if (aiWaf !== undefined) {
     wafValue = !!aiWaf;
@@ -510,290 +606,215 @@ export async function runAdvisor(
     wafReasoning = [`Preserved AI decision to use WAF: ${wafValue}.`, '[Golden Rule: Preserve the application\'s architecture]'];
   }
 
+  const wafSuitability = wafValue ? 90 : 15;
+  const wafNoneSuitability = wafValue ? 25 : 98;
+
   const secRec: ComponentRecommendation = {
-    component: 'Edge WAF Security & CDN',
-    recommendation: wafValue ? 'Recommended' : 'Not Recommended',
-    confidence: 85,
-    evidence: wafValue ? wafEvidence : ['No sensitive auth database inputs or public API routes.'],
-    tradeoffs: { pros: securityRules.pros, cons: securityRules.cons },
-    alternatives: wafValue
-      ? [{ option: 'Direct ALB Routing (No WAF)', reasoning: 'Saves WAF costs but exposes application to script bots.' }]
-      : [{ option: 'AWS WAF', reasoning: 'Enable if user auth database connections or compliance rules are introduced.' }],
-    monthlyCost: wafValue ? securityRules.cost || 8.00 : 0.00,
-  };
-  recs['security'] = secRec;
-
-  // 6. Sentry
-  const sentryEvidence: string[] = [];
-  if (characteristics.sentryLib || characteristics.sentryDsnConfigured) {
-    sentryEvidence.push(`Sentry SDK detected: ${characteristics.sentryLib}.`);
-  }
-
-  let sentryValue = sentryEvidence.length > 0;
-  let sentrySource = 'evidence-engine';
-  let sentryReasoning = sentryValue
-    ? [...sentryEvidence, '[Golden Rule: Never ask a question that can be answered through inspection]']
-    : ['No error tracking libraries found. CloudWatch will handle baseline logging.', '[Golden Rule: Avoid unnecessary infrastructure]'];
-
-  if (aiSentry !== undefined) {
-    sentryValue = typeof aiSentry === 'string' ? aiSentry !== 'none' : !!aiSentry;
-    sentrySource = 'ai-config';
-    sentryReasoning = [`Preserved AI decision to use Sentry: ${sentryValue}.`, '[Golden Rule: Preserve the application\'s architecture]'];
-  }
-
-  const sentryRec: ComponentRecommendation = {
-    component: 'Error & Performance Tracking',
-    recommendation: sentryValue ? 'Recommended' : 'Optional',
+    component: 'Firewall & Security Shield',
+    recommendation: wafValue ? 'waf' : 'none',
     confidence: 90,
-    evidence: sentryValue ? sentryEvidence : ['No error tracking libraries detected in package configurations.'],
-    tradeoffs: { pros: sentryRules.pros, cons: sentryRules.cons },
-    alternatives: sentryValue
-      ? [{ option: 'Standard CloudWatch Logs', reasoning: 'Zero-cost, but lacks real-time crash trace notifications.' }]
-      : [{ option: 'Sentry SDK Integration', reasoning: 'Highly recommended for real-time monitoring of runtime exceptions.' }],
-    monthlyCost: 0.00,
+    evidence: wafValue ? wafEvidence : ['Application does not expose critical database schemas or auth inputs.'],
+    tradeoffs: {
+      pros: securityMod.tradeoffs['waf']?.pros || ['Shields public routes', 'Blocks SQLi and XSS bot attacks'],
+      cons: securityMod.tradeoffs['waf']?.cons || ['High baseline ACL monthly cost']
+    },
+    costTier: wafValue ? 'High' : 'Very Low',
+    complexityTier: wafValue ? 'Medium' : 'Low',
+    suitability: wafValue ? wafSuitability : wafNoneSuitability,
+    reasoning: wafReasoning,
+    migrationTrigger: securityMod.migrationTriggers[0] || 'Enable AWS WAF when public user auth, payment processors, or API gateway endpoints are added.',
+    alternatives: [
+      {
+        option: wafValue ? 'None/DNS Only' : 'WAF Firewall',
+        costTier: wafValue ? 'Very Low' : 'High',
+        complexityTier: wafValue ? 'Low' : 'Medium',
+        suitability: wafValue ? wafNoneSuitability : wafSuitability,
+        reason: wafValue
+          ? 'Leaves authentication and user dashboards exposed to automated bot and credential-stuffing attacks.'
+          : 'Simple monolithic portfolios do not warrant the $12.00/mo baseline rule fee.'
+      }
+    ],
+    monthlyCost: wafValue ? 8.00 : 0.00
   };
-  recs['sentry'] = sentryRec;
+  recs['waf'] = secRec;
 
-  // Risks
-  if (dbValue === 'postgresql' && !wafValue) {
-    risks.push('Active database connected without Web Application Firewall (WAF) edge protection.');
-  }
-  if (characteristics.hasWebsockets && hostingValue === 'ec2') {
-    risks.push('WebSockets are utilized, but compute hosting is not configured for horizontal scale.');
-  }
+  // 6. Networking Traffic Routing (ALB vs Direct)
+  const isAlbIncluded = hostingValue === 'ecs-fargate';
+  ctx.isEcsHosting = isAlbIncluded;
 
-  // Populating Decisions Array
+  let routingValue = evaluateDecisionRules(networkingMod, ctx)?.result || 'direct';
+  let routingSource = 'evidence-engine';
+  let routingReasoning = routingValue === 'alb'
+    ? ['ECS Fargate requires a load balancer for traffic routing to dynamic tasks.']
+    : ['EC2 hosting maps direct domains to the instance IP.', '[Golden Rule: Minimize AWS monthly cost]'];
+
+  const albSuitability = isAlbIncluded ? 95 : 15;
+  const directSuitability = isAlbIncluded ? 10 : 98;
+
+  const netRec: ComponentRecommendation = {
+    component: 'Traffic Routing & Load Balancer',
+    recommendation: routingValue,
+    confidence: 95,
+    evidence: isAlbIncluded ? ['ECS Fargate active task orchestration.'] : ['Single EC2 monolithic server mapped directly.'],
+    tradeoffs: {
+      pros: networkingMod.tradeoffs['alb']?.pros || ['SSL termination', 'Dynamic target group task routing'],
+      cons: networkingMod.tradeoffs['alb']?.cons || ['Adds baseline ALB hourly cost']
+    },
+    costTier: routingValue === 'alb' ? 'High' : 'Very Low',
+    complexityTier: routingValue === 'alb' ? 'High' : 'Low',
+    suitability: routingValue === 'alb' ? albSuitability : directSuitability,
+    reasoning: routingReasoning,
+    migrationTrigger: networkingMod.migrationTriggers[0] || 'Add Application Load Balancer when migrating compute to ECS Fargate.',
+    alternatives: [
+      {
+        option: routingValue === 'alb' ? 'Direct Routing' : 'Load Balancer (ALB)',
+        costTier: routingValue === 'alb' ? 'Very Low' : 'High',
+        complexityTier: routingValue === 'alb' ? 'Low' : 'High',
+        suitability: routingValue === 'alb' ? directSuitability : albSuitability,
+        reason: routingValue === 'alb'
+          ? 'Direct host mapping fails to target horizontally scaled, ephemeral ECS tasks.'
+          : 'Avoids load balancer costs for single-node EC2 monolithic servers.'
+      }
+    ],
+    monthlyCost: routingValue === 'alb' ? 15.00 : 0.00
+  };
+  recs['networking'] = netRec;
+
+  // ───────────────────────────────────────────────────────────
+  // PART 2: Format Output & Summary
+  // ───────────────────────────────────────────────────────────
+
+  // Translate decisions for downstream synthesis & deployment modules
   decisions.push({
     component: 'hosting',
     value: hostingValue,
-    confidence: hostingValue === 'ecs-fargate' ? 90 : 95,
-    reasoning: hostingReasoning,
+    confidence: hostingRec.confidence,
+    reasoning: hostingRec.reasoning,
     source: hostingSource,
     decisionType: 'RECOMMENDATION',
-    monthlyCost: hostingValue === 'ecs-fargate' ? 15.00 : 3.20,
+    monthlyCost: hostingRec.monthlyCost
   });
 
   decisions.push({
     component: 'database',
     value: dbValue,
-    confidence: 95,
-    reasoning: dbReasoning,
+    confidence: dbRec.confidence,
+    reasoning: dbRec.reasoning,
     source: dbSource,
-    decisionType: 'RECOMMENDATION',
-    monthlyCost: dbValue !== 'none' ? 15.00 : 0.00,
+    decisionType: dbValue !== 'none' ? 'RECOMMENDATION' : 'SAFE',
+    monthlyCost: dbRec.monthlyCost
   });
 
   decisions.push({
     component: 'redis',
     value: redisValue,
-    confidence: 95,
-    reasoning: redisReasoning,
+    confidence: redisRec.confidence,
+    reasoning: redisRec.reasoning,
     source: redisSource,
     decisionType: 'RECOMMENDATION',
-    monthlyCost: redisValue ? 12.00 : 0.00,
+    monthlyCost: redisRec.monthlyCost
   });
 
   decisions.push({
     component: 'pgBouncer',
     value: pgbValue,
-    confidence: 90,
-    reasoning: pgbReasoning,
+    confidence: pgbRec.confidence,
+    reasoning: pgbRec.reasoning,
     source: pgbSource,
     decisionType: 'RECOMMENDATION',
-    monthlyCost: pgbValue ? 15.00 : 0.00,
+    monthlyCost: pgbRec.monthlyCost
   });
 
   decisions.push({
     component: 'waf',
     value: wafValue,
-    confidence: 85,
-    reasoning: wafReasoning,
+    confidence: secRec.confidence,
+    reasoning: secRec.reasoning,
     source: wafSource,
     decisionType: 'RECOMMENDATION',
-    monthlyCost: wafValue ? 8.00 : 0.00,
+    monthlyCost: secRec.monthlyCost
   });
 
   decisions.push({
-    component: 'sentry',
-    value: sentryValue,
-    confidence: 90,
-    reasoning: sentryReasoning,
-    source: sentrySource,
+    component: 'networking',
+    value: routingValue,
+    confidence: netRec.confidence,
+    reasoning: netRec.reasoning,
+    source: routingSource,
     decisionType: 'RECOMMENDATION',
-    monthlyCost: 0.00,
+    monthlyCost: netRec.monthlyCost
   });
 
-  // 7. Region
-  let detectedRegion = existingConfig.region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || '';
-  let regionSource = existingConfig.region ? 'ai-config' : 'env-config';
-  let regionReasoning = existingConfig.region
-    ? [`Preserved AI decision to use region '${detectedRegion}'.`, '[Golden Rule: Preserve the application\'s architecture]']
-    : ['Read from AWS_REGION/AWS_DEFAULT_REGION environment variable.', '[Golden Rule: Never ask a question that can be answered through inspection]'];
-
-  if (!detectedRegion) {
-    try {
-      const { execSync } = require('child_process');
-      const awsRegion = execSync('aws configure get region', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-      if (awsRegion) {
-        detectedRegion = awsRegion;
-        regionSource = 'aws-cli-config';
-        regionReasoning = [`Auto-detected default region '${detectedRegion}' from configured AWS CLI profile.`, '[Golden Rule: Never ask a question that can be answered through inspection]'];
-      }
-    } catch {}
-  }
-
-  if (!detectedRegion) {
-    detectedRegion = 'us-east-1';
-    regionSource = 'default-fallback';
-    regionReasoning = ["Defaulting to 'us-east-1' (no active profile or environment region override detected).", '[Golden Rule: Minimize AWS monthly cost]'];
-  }
-
-  decisions.push({
-    component: 'region',
-    value: detectedRegion,
-    confidence: 95,
-    reasoning: regionReasoning,
-    source: regionSource,
-    decisionType: 'SAFE',
-    monthlyCost: 0,
-  });
-
-  // 8. CloudWatch & Budget
-  decisions.push({
-    component: 'cloudwatch',
-    value: true,
-    confidence: 100,
-    reasoning: ['Production best practice. Always enabled.', '[Golden Rule: Prefer AWS native services]'],
-    source: 'best-practice',
-    decisionType: 'SAFE',
-    monthlyCost: 0,
-  });
-
-  decisions.push({
-    component: 'budgetAlerts',
-    value: true,
-    confidence: 100,
-    reasoning: ['Cost protection. Always enabled.', '[Golden Rule: Minimize AWS monthly cost]'],
-    source: 'best-practice',
-    decisionType: 'SAFE',
-    monthlyCost: 0,
-  });
-
-  // 9. Domain
-  let domainName = existingConfig.domainName || existingConfig.domain || process.env.MYSYSTEM_DOMAIN || '';
-  let domainSource = (existingConfig.domainName || existingConfig.domain) ? 'ai-config' : 'env-config';
-  let domainReasoning = domainName
-    ? [`Custom domain configured: ${domainName}.`, '[Golden Rule: Never ask a question that can be answered through inspection]']
-    : ['No custom domain configured. AWS default endpoint will be used.', '[Golden Rule: Minimize AWS monthly cost]'];
-
-  decisions.push({
-    component: 'domain',
-    value: domainName || 'none',
-    confidence: 95,
-    reasoning: domainReasoning,
-    source: domainSource,
-    decisionType: 'SAFE',
-    monthlyCost: 0,
-  });
-
-  // ───────────────────────────────────────────────────────────
-  // PART 2: Service Justification & Simplicity calculation
-  // ───────────────────────────────────────────────────────────
-
+  // Justifications Mapping for Legacy Console Rendering
   const justifications: Record<string, ServiceJustification> = {};
-
-  const addJustification = (service: string, key: string, evidence: string[], benefits: string[], complexity: string, cost: number, rejectedReason: string) => {
-    const decVal = decisions.find(d => d.component === key);
-    let isIncluded = false;
-    if (decVal) {
-      if (key === 'hosting') {
-        isIncluded = decVal.value === 'ecs-fargate';
-      } else if (key === 'database') {
-        isIncluded = decVal.value !== 'none';
-      } else {
-        isIncluded = !!decVal.value;
-      }
-    }
-    justifications[key] = {
-      service,
-      decision: isIncluded ? 'Included' : 'Not Included',
-      evidence: evidence.length > 0 ? evidence : ['No evidence supporting this service detected.'],
-      benefits: isIncluded ? benefits : ['Saves monthly cloud expenditure and simplifies network stack.'],
-      operationalComplexity: complexity,
-      monthlyCost: isIncluded ? cost : 0,
-      reasonRejectedOrSelected: isIncluded ? 'Required to satisfy current workload requirements.' : rejectedReason
-    };
+  justifications['hosting'] = {
+    service: 'ECS (Managed Containers)',
+    decision: hostingValue === 'ecs-fargate' ? 'Included' : 'Not Included',
+    evidence: hostingEvidence,
+    benefits: ['Provides horizontal scaling', 'Enables zero-downtime rolling updates', 'Isolates tasks in private subnets'],
+    operationalComplexity: hostingValue === 'ecs-fargate' ? 'High (Score: 7)' : 'Low (Score: 2)',
+    monthlyCost: hostingValue === 'ecs-fargate' ? 15.00 : 0.00,
+    reasonRejectedOrSelected: hostingValue === 'ecs-fargate' ? 'Required to satisfy current workload requirements.' : 'Single EC2 instance running Docker Compose is the simplest and cheapest starting tier for the monolithic workload.'
   };
 
-  addJustification(
-    'ECS (Managed Containers)',
-    'hosting',
-    hostingEvidence,
-    ['Provides horizontal scaling', 'Enables zero-downtime rolling updates', 'Isolates containers in private subnets'],
-    hostingValue === 'ecs-fargate' ? 'High (Score: 7)' : 'Low (Score: 2)',
-    15.00,
-    'Single EC2 instance running Docker Compose is the simplest and cheapest starting tier for the monolithic workload.'
-  );
+  justifications['database'] = {
+    service: 'RDS (Managed PostgreSQL)',
+    decision: dbValue !== 'none' ? 'Included' : 'Not Included',
+    evidence: dbValue !== 'none' ? rdsEvidence : [],
+    benefits: ['Automated daily snapshots and backups', 'Managed minor version upgrades', 'High availability options'],
+    operationalComplexity: 'Medium (Score: 4)',
+    monthlyCost: dbValue !== 'none' ? 15.00 : 0.00,
+    reasonRejectedOrSelected: dbValue !== 'none' ? 'Required to satisfy database requirements.' : 'No SQL database required or local SQLite is sufficient.'
+  };
 
-  addJustification(
-    'RDS (Managed PostgreSQL)',
-    'database',
-    dbValue !== 'none' ? rdsEvidence : [],
-    ['Automated daily snapshots and backups', 'Managed minor version upgrades', 'High availability deployment options'],
-    'Medium (Score: 4)',
-    15.00,
-    'No database is required or local SQLite is sufficient.'
-  );
+  justifications['redis'] = {
+    service: 'Redis (Cache & Messaging Broker)',
+    decision: redisValue ? 'Included' : 'Not Included',
+    evidence: redisEvidence,
+    benefits: ['High-throughput pub/sub for WebSockets', 'Broker backing background queue workers', 'Sub-millisecond caches'],
+    operationalComplexity: 'Medium (Score: 5)',
+    monthlyCost: redisValue ? 12.00 : 0.00,
+    reasonRejectedOrSelected: redisValue ? 'Required to satisfy messaging/broker requirements.' : 'Additional operational complexity without measurable benefit.'
+  };
 
-  addJustification(
-    'Redis (Cache & Messaging Broker)',
-    'redis',
-    redisEvidence,
-    ['High-throughput pub/sub for WebSockets', 'Broker backing background worker queues', 'Sub-millisecond query caching'],
-    'Medium (Score: 5)',
-    12.00,
-    'Additional operational complexity without measurable benefit.'
-  );
+  justifications['pgBouncer'] = {
+    service: 'PgBouncer (Database Proxy)',
+    decision: pgbValue ? 'Included' : 'Not Included',
+    evidence: pgbEvidence,
+    benefits: ['Protects RDS connection pool limits', 'Supports serverless connection spikes safely'],
+    operationalComplexity: 'Medium (Score: 4)',
+    monthlyCost: pgbValue ? 15.00 : 0.00,
+    reasonRejectedOrSelected: pgbValue ? 'Required to satisfy connection concurrency requirements.' : 'Direct client connection pools are sufficient; no serverless spikes detected.'
+  };
 
-  addJustification(
-    'PgBouncer (Database Proxy)',
-    'pgBouncer',
-    pgbEvidence,
-    ['Protects RDS connection pool limits', 'Supports serverless connection spikes safely'],
-    'Medium (Score: 4)',
-    15.00,
-    'Direct client connection pools are sufficient; no serverless spikes detected.'
-  );
+  justifications['waf'] = {
+    service: 'AWS WAF (Web Application Firewall)',
+    decision: wafValue ? 'Included' : 'Not Included',
+    evidence: wafEvidence,
+    benefits: ['Shields public auth endpoints', 'Blocks SQL Injection and XSS bot attacks'],
+    operationalComplexity: 'Medium (Score: 3)',
+    monthlyCost: wafValue ? 8.00 : 0.00,
+    reasonRejectedOrSelected: wafValue ? 'Required to satisfy application security policies.' : 'Application does not expose critical user auth databases or sensitive endpoints to public bots.'
+  };
 
-  addJustification(
-    'AWS WAF (Web Application Firewall)',
-    'waf',
-    wafEvidence,
-    ['Shields public auth endpoints', 'Blocks SQL Injection and XSS bot attacks'],
-    'Medium (Score: 3)',
-    8.00,
-    'Application does not expose critical user auth databases or sensitive endpoints to public bots.'
-  );
-
-  const isAlbIncluded = hostingValue === 'ecs-fargate';
   justifications['alb'] = {
     service: 'Application Load Balancer (ALB)',
     decision: isAlbIncluded ? 'Included' : 'Not Included',
-    evidence: isAlbIncluded ? ['ECS Fargate requires a load balancer for traffic routing to dynamic tasks.'] : ['EC2 hosting maps direct domains to the instance IP.'],
+    evidence: isAlbIncluded ? ['ECS Fargate requires a load balancer for routing.'] : ['EC2 hosting maps direct domains to the instance IP.'],
     benefits: isAlbIncluded ? ['SSL termination and multi-task routing'] : ['Saves monthly ALB fees and simplifies routing.'],
     operationalComplexity: 'Medium (Score: 5)',
     monthlyCost: isAlbIncluded ? 15.00 : 0.00,
     reasonRejectedOrSelected: isAlbIncluded ? 'Required by ECS Fargate.' : 'Direct DNS Elastic IP mapping is simpler.'
   };
 
-  // Complexity Calculation
+  // Complexity Calculation (Legacy)
   let complexityScore = 0;
   if (hostingValue === 'ec2') {
-    complexityScore += 2; // EC2
-    complexityScore += 1; // Docker Compose
+    complexityScore += 2;
+    complexityScore += 1;
   } else {
-    complexityScore += 7; // ECS
-    complexityScore += 5; // ALB
+    complexityScore += 7;
+    complexityScore += 5;
   }
   if (dbValue === 'postgresql') complexityScore += 4;
   if (redisValue) complexityScore += 5;
@@ -805,16 +826,16 @@ export async function runAdvisor(
   // Upgrade Path Recommendations
   const upgradePath: string[] = [];
   if (hostingValue === 'ec2') {
-    upgradePath.push('When average CPU exceeds 70% for sustained periods or multiple services are introduced, migrate to ECS.');
+    upgradePath.push('hosting: ' + hostingRec.migrationTrigger);
   }
   if (dbValue === 'none') {
-    upgradePath.push('If multi-instance scalability or persistent structured schemas are required later, provision AWS RDS.');
+    upgradePath.push('database: ' + dbRec.migrationTrigger);
   }
   if (!redisValue) {
-    upgradePath.push('Add ElastiCache Redis if background workers, WebSocket event synchronization, or high-read caches are introduced.');
+    upgradePath.push('caching: ' + redisRec.migrationTrigger);
   }
   if (!wafValue) {
-    upgradePath.push('Enable AWS WAF when public user auth, payment processors, or API gateway endpoints are added.');
+    upgradePath.push('security: ' + secRec.migrationTrigger);
   }
 
   const totalMonthlyCost = decisions.reduce((sum, d) => sum + d.monthlyCost, 0);

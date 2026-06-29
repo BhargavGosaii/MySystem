@@ -1,0 +1,8 @@
+decisionName: "In-Memory Caching"
+defaultChoice: "none"
+costTier: "Very Low"
+complexityTier: "Low"
+alternatives:
+  - name: "redis"
+    costTier: "Medium"
+    complexityTier: "Medium"

@@ -1,6 +1,13 @@
 import { ProductionDecision, ArchitectureReview } from '../advisor';
 import { EngineeringFinding } from '../services/review';
 
+function renderProgressBar(score: number): string {
+  const bars = Math.round(score / 10);
+  const filled = '█'.repeat(bars);
+  const empty = '░'.repeat(10 - bars);
+  return `\x1b[32m${filled}\x1b[0m\x1b[90m${empty}\x1b[0m`;
+}
+
 /**
  * Renders the Production Plan and Review summary to the terminal.
  * This is the primary output the developer sees before deployment proceeds.
@@ -76,9 +83,6 @@ export function renderProductionPlan(
       else rating = 'High Complexity / Multi-Service';
       printDecisionRow('Simplicity Score', `\x1b[32m${review.simplicityScore}% (${rating})\x1b[0m`);
     }
-    if (review.complexityScore !== undefined) {
-      printDecisionRow('Complexity Score', `${review.complexityScore}`);
-    }
   }
   console.log('');
 
@@ -153,25 +157,46 @@ export function renderProductionPlan(
   console.log('\x1b[90mℹ️  Decisions aligned with the MySystem Production Standard (AGENTS.md)\x1b[0m');
   console.log('\x1b[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m\n');
 
-  // Infrastructure Justification
-  if (review && review.justifications) {
+  // 3. Render Architecture Suitability
+  if (review && review.recommendations) {
+    console.log('\x1b[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
+    console.log('\x1b[1m          ARCHITECTURE SUITABILITY             \x1b[0m');
+    console.log('\x1b[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m\n');
+
+    Object.entries(review.recommendations).forEach(([key, rec]) => {
+      console.log(`  \x1b[1m${rec.component}\x1b[0m:`);
+      
+      const recVal = rec.recommendation === 'redis' ? 'Redis' : rec.recommendation === 'pgbouncer' ? 'PgBouncer' : rec.recommendation === 'waf' ? 'WAF' : rec.recommendation === 'alb' ? 'ALB' : rec.recommendation.toUpperCase();
+      console.log(`    ${recVal.padEnd(20)}: ${renderProgressBar(rec.suitability)} (${rec.suitability}/100)`);
+      
+      rec.alternatives.forEach(alt => {
+        console.log(`    ${alt.option.padEnd(20)}: ${renderProgressBar(alt.suitability)} (${alt.suitability}/100)`);
+      });
+      console.log('');
+    });
+    console.log('\x1b[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m\n');
+  }
+
+  // 4. Infrastructure Justification
+  if (review && review.recommendations) {
     console.log('\x1b[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
     console.log('\x1b[1m         INFRASTRUCTURE JUSTIFICATION          \x1b[0m');
     console.log('\x1b[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m\n');
 
-    Object.values(review.justifications).forEach(j => {
-      console.log(`  \x1b[1m${j.service}\x1b[0m`);
-      console.log(`  Decision:                  ${j.decision === 'Included' ? '\x1b[32mIncluded\x1b[0m' : '\x1b[33mNot Included\x1b[0m'}`);
-      console.log(`  Evidence:                  ${j.evidence.join(', ')}`);
-      if (j.decision === 'Included') {
-        console.log(`  Benefits:                  ${j.benefits.join(', ')}`);
-        console.log(`  Operational Complexity:    ${j.operationalComplexity}`);
-        console.log(`  Estimated Monthly Cost:    $${j.monthlyCost.toFixed(2)}/month`);
-      } else {
-        const savings = j.monthlyCost || 12.00;
-        console.log(`  Estimated Monthly Savings: ~$${savings.toFixed(2)}/month`);
-      }
-      console.log(`  Reason:                    ${j.reasonRejectedOrSelected}`);
+    Object.values(review.recommendations).forEach(rec => {
+      console.log(`  \x1b[1m${rec.component}\x1b[0m`);
+      const recVal = rec.recommendation === 'redis' ? 'Redis' : rec.recommendation === 'pgbouncer' ? 'PgBouncer' : rec.recommendation === 'waf' ? 'WAF' : rec.recommendation === 'alb' ? 'ALB' : rec.recommendation.toUpperCase();
+      console.log(`  Decision:                  \x1b[32m${recVal}\x1b[0m`);
+      console.log(`  Evidence:                  ${rec.evidence.join(', ')}`);
+      console.log(`  Operational Complexity:    ${rec.complexityTier}`);
+      console.log(`  Cost Impact:               ${rec.costTier}`);
+      console.log(`  Reason:                    ${rec.reasoning.join(' ')}`);
+      
+      rec.alternatives.forEach(alt => {
+        console.log(`  Alternative Option:        ${alt.option}`);
+        console.log(`  Suitability:               ${alt.suitability}%`);
+        console.log(`  Rejection Reason:          ${alt.reason}`);
+      });
       console.log('');
     });
     console.log('\x1b[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m\n');
@@ -188,7 +213,7 @@ export function renderProductionPlan(
     console.log('\n\x1b[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m\n');
   }
 
-  // 3. Render Review Findings
+  // 5. Render Review Findings
   const autofixes = findings.filter(f => f.action === 'AUTOFIX');
   const recommendations = findings.filter(f => !f.blocksDeployment && f.action !== 'AUTOFIX' && f.action !== 'IGNORE' && !f.fixed);
   const blockers = findings.filter(f => f.blocksDeployment && !f.fixed);

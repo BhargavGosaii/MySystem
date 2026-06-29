@@ -1,0 +1,8 @@
+{
+  "hosting": "ecs-fargate",
+  "database": "postgresql",
+  "redis": true,
+  "pgBouncer": false,
+  "waf": false,
+  "maxMonthlyCost": 60.00
+}

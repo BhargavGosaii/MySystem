@@ -1,0 +1,8 @@
+decisionName: "Traffic Routing & Load Balancer"
+defaultChoice: "direct"
+costTier: "Very Low"
+complexityTier: "Low"
+alternatives:
+  - name: "alb"
+    costTier: "High"
+    complexityTier: "High"

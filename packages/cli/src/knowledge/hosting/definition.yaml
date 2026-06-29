@@ -1,0 +1,8 @@
+decisionName: "Compute Hosting Platform"
+defaultChoice: "ec2"
+costTier: "Low"
+complexityTier: "Low"
+alternatives:
+  - name: "ecs-fargate"
+    costTier: "Medium"
+    complexityTier: "High"

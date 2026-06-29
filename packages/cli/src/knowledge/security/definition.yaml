@@ -1,0 +1,8 @@
+decisionName: "Firewall & Security Shield"
+defaultChoice: "none"
+costTier: "Very Low"
+complexityTier: "Low"
+alternatives:
+  - name: "waf"
+    costTier: "High"
+    complexityTier: "Medium"

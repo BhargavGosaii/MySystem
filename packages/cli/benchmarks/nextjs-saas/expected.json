@@ -1,0 +1,8 @@
+{
+  "hosting": "ec2",
+  "database": "postgresql",
+  "redis": false,
+  "pgBouncer": true,
+  "waf": false,
+  "maxMonthlyCost": 40.00
+}

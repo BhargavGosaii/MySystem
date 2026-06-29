@@ -1,0 +1,7 @@
+{
+  "name": "worker-service",
+  "dependencies": {
+    "bullmq": "^5.0.0",
+    "redis": "^4.6.0"
+  }
+}

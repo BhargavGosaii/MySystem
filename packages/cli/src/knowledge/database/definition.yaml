@@ -1,0 +1,11 @@
+decisionName: "SQL Database Hosting"
+defaultChoice: "none"
+costTier: "Very Low"
+complexityTier: "Low"
+alternatives:
+  - name: "postgresql"
+    costTier: "Medium"
+    complexityTier: "Medium"
+  - name: "pgbouncer"
+    costTier: "Low"
+    complexityTier: "Medium"
